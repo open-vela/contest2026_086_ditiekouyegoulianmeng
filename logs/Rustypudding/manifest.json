@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "team_id": "contest2026_086_ditiekouyegoulianmeng",
+  "github_login": "Rustypudding",
+  "generator": "claude-code-collector@1.3.0",
+  "updated_at": "2026-09-12T14:20:54.176Z",
+  "sessions": [
+    {
+      "session_id": "583e52cf-e30b-4189-8ae1-9ef1194a8a82",
+      "tool": "claude-code",
+      "started_at": "2026-07-25T08:30:01.030Z",
+      "last_event_at": "2026-09-12T14:20:53.063Z",
+      "event_count": 10786,
+      "raw_event_count": 20167,
+      "file_path": "logs/Rustypudding/2026-09-12/claude-code__583e52cf-e30b-4189-8ae1-9ef1194a8a82.jsonl",
+      "collection_mode": "cli",
+      "health": "ok",
+      "model": "deepseek-flash"
+    }
+  ]
+}

@@ -71,12 +71,25 @@
 #define WAKE_END_MSQ         80000        /* mean-square: speech offset (hysteresis) */
 #define WAKE_SILENCE_CHUNKS  40           /* 40 × 20 ms = 800 ms silence ends an utterance */
 #define WAKE_MAX_BYTES       (8 * 32000)  /* cap a single utterance at 8 s */
-#define WAKE_WORD            "小伙伴"
+/* Contest rule: the wake word is fixed to "你好，openvela" / "Hello，openvela".
+ * Detection here is a match on the MiMo ASR transcript, not a local KWS, and
+ * ASR renders a mixed Chinese/English phrase inconsistently -- spacing, case
+ * and punctuation all vary, and "openvela" sometimes comes back as a phonetic
+ * transliteration. So we match the alias list below against a normalized view
+ * of the transcript (case folded; anything that is not a letter, digit or CJK
+ * ideograph treated as a separator) rather than one literal string. Keep the
+ * list tight -- every alias is one more phrase that can wake the buddy by
+ * accident.
+ *
+ * The "wake: heard ..." log line prints the raw transcript. If MiMo comes back
+ * with a wording the list does not cover, add it here. */
+#define WAKE_ALIASES         { "你好openvela", "helloopenvela", "哈喽openvela", \
+                               "你好欧本维拉", "你好欧朋维拉", "哈喽欧本维拉" }
 #define WAKE_IDLE_PROMPT     "我在呢，你想做什么？"
 
 /* Follow-up window: after the buddy finishes a reply, accept the kid's next
  * utterance as a command for this many ms WITHOUT the wake word, so they can
- * answer a question / pick a story option without re-saying "小伙伴". */
+ * answer a question / pick a story option without re-saying the wake word. */
 #define FOLLOW_UP_MS         12000
 
 /* After a hard ASR failure (MiMo HTTP 429 "Too many requests", network error),
@@ -105,7 +118,7 @@
  * glance which build is actually running on the board. Bump this every
  * time you rebuild + reflash, then check the screen to confirm the new
  * image took effect. */
-#define KID_BUDDY_VERSION  "v2.53"
+#define KID_BUDDY_VERSION  "v2.54"
 
 /****************************************************************************
  * Types
@@ -728,7 +741,7 @@ static void proactive_timer_cb(lv_timer_t *timer)
         "（这是开机后的主动检查，请查看我们的对话历史。"
         "如果之前有讲到一半的冒险故事或游戏，就主动对小朋友说："
         "上次的冒险讲到一半啦，还要继续吗？并给出「继续」和「重新开始」两个选择。"
-        "如果没有未完成的故事，就简单打个招呼：小伙伴来啦，今天想玩什么呀？）");
+        "如果没有未完成的故事，就简单打个招呼：小朋友来啦，今天想玩什么呀？）");
 }
 
 /****************************************************************************
@@ -905,25 +918,132 @@ static void trim_junk(char *s)
     }
 }
 
-/* Remove every occurrence of the wake word from text, then trim junk.
+/* ── Wake-word matching ────────────────────────────────────────
+ * The phrase is matched case-, space- and punctuation-insensitively, so any of
+ * "你好，openvela" / "你好 openvela" / "Hello, OpenVela" / a phonetic "你好欧本
+ * 维拉" wakes the buddy. Nothing else in the transcript is altered -- the
+ * command handed to the LLM keeps its own punctuation. */
+
+static const char *const g_wake_aliases[] = WAKE_ALIASES;
+
+/* Decode one UTF-8 code point. Returns the bytes consumed (at least 1); an
+ * invalid sequence yields 0xffffffff, which no alias can equal. */
+static int utf8_decode(const char *p, unsigned int *cp)
+{
+    const unsigned char *u = (const unsigned char *)p;
+
+    if (u[0] < 0x80) {
+        *cp = u[0];
+        return 1;
+    }
+    if ((u[0] & 0xe0) == 0xc0 && (u[1] & 0xc0) == 0x80) {
+        *cp = ((unsigned int)(u[0] & 0x1f) << 6) | (u[1] & 0x3f);
+        return 2;
+    }
+    if ((u[0] & 0xf0) == 0xe0 && (u[1] & 0xc0) == 0x80
+        && (u[2] & 0xc0) == 0x80) {
+        *cp = ((unsigned int)(u[0] & 0x0f) << 12)
+              | ((unsigned int)(u[1] & 0x3f) << 6) | (u[2] & 0x3f);
+        return 3;
+    }
+    if ((u[0] & 0xf8) == 0xf0 && (u[1] & 0xc0) == 0x80
+        && (u[2] & 0xc0) == 0x80 && (u[3] & 0xc0) == 0x80) {
+        *cp = 0xffffffff;  /* astral plane: nothing here matches on it */
+        return 4;
+    }
+    *cp = 0xffffffff;
+    return 1;
+}
+
+/* The code points that survive normalization: ASCII letters and digits, and
+ * CJK unified ideographs. Everything else -- space, punctuation, full-width
+ * forms, emoji -- is a separator and is skipped while matching. */
+static bool wake_kept(unsigned int cp)
+{
+    return (cp >= '0' && cp <= '9') || (cp >= 'A' && cp <= 'Z')
+        || (cp >= 'a' && cp <= 'z') || (cp >= 0x4e00 && cp <= 0x9fff);
+}
+
+static unsigned int wake_fold(unsigned int cp)
+{
+    return (cp >= 'A' && cp <= 'Z') ? cp + ('a' - 'A') : cp;
+}
+
+/* Does the transcript at p start with alias (already in normalized form, i.e.
+ * lowercase and free of separators)? Separators in the transcript are skipped.
+ * On success *end is left just past the last byte that was matched. */
+static bool wake_match_at(const char *p, const char *alias, const char **end)
+{
+    const char *last = NULL;
+
+    for (const char *a = alias; *a; ) {
+        unsigned int acp, tcp;
+
+        a += utf8_decode(a, &acp);
+
+        do {
+            if (*p == '\0') {
+                return false;
+            }
+            p += utf8_decode(p, &tcp);
+        } while (!wake_kept(tcp));
+
+        if (wake_fold(tcp) != acp) {
+            return false;
+        }
+
+        last = p;
+    }
+
+    *end = last;
+    return true;
+}
+
+/* Locate the wake phrase in the transcript. On a hit *start / *end bound it in
+ * the ORIGINAL text, so the caller can cut exactly that span and leave the rest
+ * of the utterance -- punctuation included -- for the LLM. */
+static bool find_wake_word(const char *text, const char **start,
+                           const char **end)
+{
+    int naliases = (int)(sizeof(g_wake_aliases) / sizeof(g_wake_aliases[0]));
+    unsigned int cp;
+
+    for (const char *p = text; *p; p += utf8_decode(p, &cp)) {
+        for (int i = 0; i < naliases; i++) {
+            if (wake_match_at(p, g_wake_aliases[i], end)) {
+                *start = p;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/* Cut the wake phrase out of text, then trim the punctuation left at the seam.
  * Returns the length of the remaining command (0 = wake word only). */
 static size_t strip_wake_word(const char *text, char *out, size_t cap)
 {
-    size_t wlen = strlen(WAKE_WORD);
-    size_t olen = 0;
-    const char *p = text;
+    const char *ws, *we;
 
-    while (*p) {
-        if (strncmp(p, WAKE_WORD, wlen) == 0) {
-            p += wlen;
-        } else {
-            if (olen + 1 < cap) {
-                out[olen++] = *p;
-            }
-            p++;
+    if (find_wake_word(text, &ws, &we)) {
+        size_t olen = (size_t)(ws - text);
+        size_t tail;
+
+        if (olen > cap - 1) {
+            olen = cap - 1;
         }
+        memcpy(out, text, olen);
+
+        tail = strlen(we);
+        if (tail > cap - 1 - olen) {
+            tail = cap - 1 - olen;
+        }
+        memcpy(out + olen, we, tail);
+        out[olen + tail] = '\0';
+    } else {
+        snprintf(out, cap, "%s", text);
     }
-    out[olen] = '\0';
 
     trim_junk(out);
     return strlen(out);
@@ -1206,7 +1326,7 @@ static void *wake_listen_worker(void *arg)
         /* Follow-up window: for a short while after the buddy finishes a
          * reply, accept the kid's next utterance as a command even without
          * the wake word (so they can pick a story option by just answering,
-         * not by re-saying "小伙伴"). */
+         * not by re-saying the wake word). */
         int64_t elapsed = now_ms() - g_last_reply_ms;
         bool follow_up = (g_last_reply_ms != 0 && elapsed < FOLLOW_UP_MS);
         int timeout_ms = follow_up ? (int)(FOLLOW_UP_MS - elapsed) : 0;
@@ -1219,7 +1339,8 @@ static void *wake_listen_worker(void *arg)
         syslog(LOG_INFO, "[kid_buddy] wake: heard \"%s\"%s\n", asr_text,
                follow_up ? " (follow-up)" : "");
 
-        bool has_wake = (strstr(asr_text, WAKE_WORD) != NULL);
+        const char *ws, *we;
+        bool has_wake = find_wake_word(asr_text, &ws, &we);
         char command[MSG_BUF_LEN];
         size_t clen = strip_wake_word(asr_text, command, sizeof(command));
         free(asr_text);
@@ -1903,7 +2024,7 @@ int main(int argc, char *argv[])
 
     /* Step 5e: Start the wake-word listening thread. It waits for the reply
      * to finish before opening the mic, then uses local VAD + MiMo ASR to
-     * detect the "小伙伴" wake word and hand the command to the LLM. */
+     * detect the wake word and hand the command to the LLM. */
     pthread_attr_t wake_attr;
     pthread_t wake_tid;
 

@@ -9,10 +9,7 @@
   <include name="openvela.xml"/>
 
   <project path="contest2026_086_ditiekouyegoulianmeng" name="contest2026_086_ditiekouyegoulianmeng">
-    <linkfile src="app/hello_app" dest="packages/demos/contest2026_086_hello_app"/>
     <!-- kid_buddy: AI 儿童陪伴应用（本队作品主体） -->
     <linkfile src="app/kid_buddy" dest="packages/demos/contest2026_086_kid_buddy"/>
-    <linkfile src="quickapp/hello_quickapp" dest="packages/apps/contest2026_086_hello_quickapp"/>
-    <linkfile src="board/contest_board" dest="vendor/openvela/boards/contest2026_086_board"/>
   </project>
 </manifest>

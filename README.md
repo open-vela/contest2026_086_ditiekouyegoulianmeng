@@ -1,148 +1,113 @@
-# contest2026_086_ditiekouyegoulianmeng
+# kid_buddy — AI 儿童陪伴（队伍 086）
 
-👋 欢迎参加 **2026 首届 openvela AI 硬件开发者大赛**！
+一块 Gemini-S1 开发板，一个能听会说的儿童玩伴。
 
-这是组委会为你的队伍创建的**专属参赛仓库**（本仓为样例/模板，队伍编号 `086`；你看到的将是你自己的 `contest2026_<编号>_<队伍名>`）。比赛期间，你的全部参赛代码、打包产物与 AI Coding 日志都提交到这里。
+孩子喊一声「小伙伴」把它唤醒，可以正常聊天问问题，也可以进入**角色扮演**：从老师、
+故事家、科学家、朋友里挑一个角色，跟它一起走一段有分支的剧情。剧情进度按会话分开存，
+孩子中途走开，过一会儿它会自己接着往下讲。
 
-> 本仓既是「代码仓」，又内置了一键拉取整套 openvela 工程的 `repo` 清单（manifest）。你只需跟它打交道，**自始至终只动一个文件夹**。
+- 赛道：AI 硬件产品创新
+- 硬件：Gemini-S1（全志 R528 / sun8iw20，128M NAND，单麦 + 喇叭 + LCD）
+- 应用版本：v2.53
 
----
+## 目录
 
-## 一、先读这些官方文档
+```
+app/kid_buddy/     作品主体：1900 多行 C + 5 个角色技能文件
+image/             预编译整机固件 + SHA256
+logs/              AI Coding 对话日志
+contest2026_086_ditiekouyegoulianmeng.xml
+                   manifest，把 app/kid_buddy 软链进编译树
+```
 
-**通用（所有赛道必读）：**
+`app/kid_buddy` 经 manifest 的 `<linkfile>` 软链到 `packages/demos/contest2026_086_kid_buddy`，
+再由 openvela 的 `Make.defs` 通配和 `mkkconfig` 自动发现 —— 不用把代码拷进生产仓的目录树。
 
-| 文档                                                                                                                                     | 用途                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [《大赛总览》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/contest_overview.md)                        | 赛道、流程、评分、资源，建议先通读             |
-| [《参赛代码提交指南》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/code_submission_guide.md)           | 仓库获取、提交流程、时间与权限（**以此为准**） |
-| [《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md) | 如何导出 AI 对话日志并提交到 `logs/`           |
+作品对 `packages/ai_agent` 和 `vendor/allwinnertech` 确实有功能改动，但都走 PR，不直接
+改这两个仓的本地副本，见下面「上游依赖」和「板级改动」。
 
-**按你的赛道选读（三选一）：**
+## 跑起来
 
-| 赛道                  | 教程导航                                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快应用 / 手表应用创新 | [快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)                         |
-| AI 硬件产品创新       | [AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)              |
-| 新硬件适配            | [新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md) |
+### 一、直接烧预编译固件（最快）
 
----
+`image/kid_buddy_gemini-s1_uart0_128Mnand_v2.53.img` 是完整固件，用全志
+PhoenixSuit / LiveSuit 按常规流程烧进 NAND 即可。上电后 `rcS.nsh` 会自动拉起
+`kid_buddy`（图形界面）和 `ai_agent`（语音后台）。
 
-## 二、第一步：拉取完整工程
+这个镜像里已经包含了下面「上游依赖」和「板级改动」的全部内容，不需要再编任何东西。
 
-用组委会提供的命令一键拉取「openvela 全量源码 + 你的专属仓」：
+### 二、从源码编
 
 ```bash
 repo init -u https://github.com/open-vela/contest2026_086_ditiekouyegoulianmeng \
   -b dev-ai-contest-2026 -m contest2026_086_ditiekouyegoulianmeng.xml
 repo sync -c -j8
+
+# 在工作区根目录
+./build.sh vendor/allwinnertech/boards/r528/r528s3-gemini-s1/configs/nsh_minidisplay
 ```
 
-同步后，你的整个仓库位于工作区的 `contest2026_086_ditiekouyegoulianmeng/`，openvela 全量源码在外层（`nuttx/`、`apps/`、`packages/`、`vendor/` 等）。
+`build.sh` 会拿板级 defconfig 覆盖 `.config` 后全量编译，结束时再把 `.config` 写回 defconfig。
 
----
-
-## 三、第二步：在哪里写代码
-
-**只在自己的仓目录 `contest2026_086_ditiekouyegoulianmeng/` 里开发。** 不同作品形态放在对应子目录，manifest 会通过 `<linkfile>` 把它们**软链**到 openvela 编译树该在的位置——你不用手动 copy：
-
-| 作品形态 | 你的代码放这里             | 系统自动映射到                                 |
-| -------- | -------------------------- | ---------------------------------------------- |
-| 应用     | `app/hello_app/`           | `packages/demos/contest2026_086_hello_app`     |
-| 快应用   | `quickapp/hello_quickapp/` | `packages/apps/contest2026_086_hello_quickapp` |
-| 板级适配 | `board/contest_board/`     | `vendor/openvela/boards/contest2026_086_board` |
-
-> 用不到的形态目录可以删掉；新增作品时按同样规则加子目录，并在 `contest2026_086_ditiekouyegoulianmeng.xml` 里补一条 `<linkfile>` 映射即可。**生产仓库（packages/nuttx/vendor 等）零改动。**
-
-建议仓库目录约定（便于评委定位）：
-
-```text
-app/ | quickapp/ | board/   # 你的作品代码
-logs/                       # AI Coding 日志（主动导出后提交，格式见 logs/README.md）
-README.md                   # 作品说明（提交前请改成你自己的，见第六节）
-```
-
-> 仓内附带了一个 `.gitignore.example`，给出了**编译产物**等不需要进仓的文件示例。如需启用，`cp .gitignore.example .gitignore` 后按需增删即可。**注意 `logs/` 下最终导出的 AI Coding 日志必须提交，不要忽略。**
->
-> `logs/` 的目录结构与提交格式见 [logs/README.md](logs/README.md)。
-
----
-
-## 四、第三步：编译与运行
-
-编译/运行步骤随作品形态不同而不同，请参考你所在赛道的教程导航：
-
-- 快应用 / 手表应用：[快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)（含模拟器与开发板部署）。
-- AI 硬件产品创新：[AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)（环境搭建、编译烧录、Skill 开发）。
-- 新硬件适配：[新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md)（BSP 移植、最小 NSH 基线）。
-
-子目录已通过 manifest 中的 `<linkfile>` 软链进 openvela 编译树，因此构建在 openvela 工作区**根目录**（即你这个仓的上一级）进行。openvela 使用 `build.sh` 作为统一入口，接收一个 **board config 路径**作为参数：
+编完还要打包。**这两步都得做**，只编译不打包，板子跑的还是旧镜像：
 
 ```bash
-# 进入 openvela 工作区根目录（你的仓的上一级）
-cd ..
-
-# 通用语法：第一个参数是 board config 路径，第二个参数可以是 menuconfig / distclean 等
-./build.sh <board-config-path> [menuconfig|distclean] [-j8]
+cd vendor/allwinnertech/lichee
+./tools/scripts/pack_img.sh -c sun8iw20p1 -p rtos -b r528s3-gemini-s1 -o nuttx \
+  -d uart0 -s none -m normal -w none -v none -i none -t "$PWD" \
+  -f r528s3/gemini-s1_nand -g r528s3/gemini-s1_nand
 ```
 
-> 具体的 board config 路径、目标产物、模拟器/真机部署方式请以你所在赛道的教程导航为准。本仓 `app/` `quickapp/` `board/` 三个示例骨架对应的 Kconfig 选项可通过 `menuconfig` 启用。
+产物落在
+`lichee/out/r528s3/gemini-s1_nand/rtos_nuttx_r528s3-gemini-s1_uart0_128Mnand.img`。
 
----
+> 如果改过 `packages/ai_agent` 的头文件（比如往结构体里加字段），记得先
+> `make -C nuttx distclean` 再编。这套构建不跟踪 `.h` 依赖，留着旧 `.o` 会出现结构体
+> 大小对不上的诡异问题。另外 `make clean` 在这个树里不是全量清理，`registry/` 和
+> `builtin_list.c` 都留着，必须用 `distclean`。
 
-## 五、第四步：提交作品
+## 上游依赖
 
-1. **fork** 你的专属仓 → 开发 → `git commit` 并推送 → 向专属仓发起 **Pull Request**，可**自行 review 并合入**（无需等组委会）。
-2. **AI Coding 日志**：与 AI 工具的对话会自动记录到本机 staging（不会自动上传），需你**主动导出/打包**选定会话到仓内 `logs/` 目录后一并提交。详见[《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md)。
-3. 若需改动 **nuttx 等公共仓库**，不在本仓改，而是 fork 对应公共仓、以 PR 提交到 `dev-ai-contest-2026` 分支，由组委会 review 后合入。
+本作品用到 `packages/ai_agent` 的 4 处改动，按主题拆成 4 个 PR 提到
+`open-vela/packages_ai_agent` 的 `dev-ai-contest-2026` 分支：
 
-> ⏰ **提交作品截止：9 月 20 日**。截止后统一收回 push 权限，仍可查看 / clone。
->
-> 获奖后再按要求将作品 PR 至 openvela 上游对应仓库（走标准 PR + CI 流程）。
+| PR | 内容 |
+| --- | --- |
+| [#33](https://github.com/open-vela/packages_ai_agent/pull/33) | voice：MiMo ASR/TTS 后端、TTS 分句流水线、麦克风输入前端上电 |
+| [#34](https://github.com/open-vela/packages_ai_agent/pull/34) | reminder：chunked 响应读完即停、TLS 逐 IP 回退重试 |
+| [#35](https://github.com/open-vela/packages_ai_agent/pull/35) | rpg：流式工具调用、会话隔离用的 `chat_id`、本地客户端关掉回复缓存 |
+| [#36](https://github.com/open-vela/packages_ai_agent/pull/36) | cli：`speak` / `thinking` 命令、MQTT 儿童上报、启动幂等 |
 
-### 关于 PR 与 CLA
+**只编译本仓的话，4 个里只有 #35 是硬依赖。** `app/kid_buddy` 用到
+`velaclaw_ask_req_t.chat_id`、`velaclaw_publish()`、`velaclaw_set_notify_callback()`
+三个符号，都由 #35 引入；少了 #35 会链接失败。另外三个不加也能编过，只是语音和提醒
+链路不完整。
 
-- 本仓所有改动通过 **Pull Request** 合入（分支保护强制，可自行合入自己的 PR）。
-- 首次贡献需在[**官网签署 CLA**](https://openvela.com/#/community/cla)；PR 上会自动跑 `cla/signature` 检查，在官网签署成功后，在 PR 评论 `/check-cla` 复检即可通过。
+上游评审有 CODEOWNERS 闸门，参赛者合不了自己的 PR。截至交赛时这 4 个 PR 都还在排队，
+所以**以 `image/` 里的预编译固件为准**。
 
----
+## 板级改动
 
-## 六、提交前：把本 README 改成你的作品说明
+`vendor/allwinnertech` 改了 3 个文件：
 
-本文件目前是组委会给的**使用说明书**。**作品提交前，请把它替换成你自己作品的说明**，方便评委快速了解你做了什么、怎么跑起来。建议至少包含以下内容：
+- `boards/r528/r528s3-gemini-s1/configs/nsh_minidisplay/defconfig`
+  打开 LVGL、CJK 字体、MQTT、NTP/DHCP 等；关键是
+  `CONFIG_AI_AGENT_AUDIO_CAPTURE_GAIN=1` —— 单麦板子上增益必须是 1，用 Kconfig 默认的 6
+  会把底噪放大几十倍，VAD 一路误触发，一直自己唤醒自己。
+- `boards/r528/r528s3-gemini-s1/src/etc/init.d/rcS.nsh`
+  开机拉起 `kid_buddy` 和 `ai_agent`。
+- `chips/r528/drivers/rtos-hal/hal/source/sound/codecs/sun8iw20-codec.c`
+  第二次打开播放设备时不再重复配 codec。重复配置会把 DAC 时钟打毛，表现是回复的第一句
+  有声音、后面的追问全哑。
 
-```markdown
-# <你的作品名>
+## AI Coding 日志
 
-## 一、作品简介
-<一句话/一段话说明这个作品是什么、解决什么问题、亮点在哪>
+`logs/Rustypudding/` 下是开发全程的 Claude Code 对话记录，时间跨度 2026-07-25 到 09-12，
+25 个有产出的日子。应用本身、上游那 4 个 PR、板级改动，都是在这个流程里做出来的。
 
-## 二、选题方向
-<快应用 / 手表应用创新 ｜ AI 硬件产品创新 ｜ 新硬件适配 ｜ 自定方向，并简述理由>
+## 已知限制
 
-## 三、目录结构
-<列出你这个仓里各目录/文件的作用，例如：>
-- `app/xxx/`        — <说明>
-- `board/xxx/`      — <说明>
-- `quickapp/xxx/`   — <说明>
-- `logs/`           — AI Coding 日志
-- `docs/` 或其他    — <说明>
-
-## 四、运行方式
-<拉取工程后，如何编译、烧录/部署、运行的完整步骤；最好能让评委照着一步步复现>
-
-## 五、AI Coding 使用说明
-<说明本作品如何借助 AI 辅助开发：
-- 在需求拆解 / 方案设计 / 编码 / 调试 / 文档等环节如何与 AI 协作；
-- AI 对开发效率或质量带来的实际帮助。
-完整对话日志见 logs/ 目录>
-```
-
-> 提示：将会根据「作品本身 + 你的 README 说明 + `logs/` 里的 AI Coding 日志」来理解和评估你的作品，README 写清楚很重要。
-
----
-
-## 附：仓库命名规范
-
-`contest2026_<编号>_<队伍名>` — 编号三位零填充；队名 slug（全小写、英文/拼音、连字符）。例：`contest2026_086_ditiekouyegoulianmeng`。
-（仓库由组委会统一创建，**每队仅一个仓**，无需自行命名。）
+- 语音链路全在云端（LLM / ASR / TTS），断网就只剩界面能用。
+- 唤醒词是固定串「小伙伴」，不是通用的声学唤醒，环境吵的时候得离近点说。
+- 预编译固件做过构造校验：`nsh.fex` 与 `vela.bin` 逐字节同长，镜像里能查到版本号
+  `v2.53`、内建名 `kid_buddy` 和 `rcS.nsh` 的启动行。但**交赛前没来得及在真机上重烧一遍**。

@@ -2,20 +2,24 @@
 
 一块 Gemini-S1 开发板，一个能听会说的儿童玩伴。
 
-孩子喊一声「小伙伴」把它唤醒，可以正常聊天问问题，也可以进入**角色扮演**：从老师、
+孩子喊一声「你好，openvela」把它唤醒，可以正常聊天问问题，也可以进入**角色扮演**：从老师、
 故事家、科学家、朋友里挑一个角色，跟它一起走一段有分支的剧情。剧情进度按会话分开存，
 孩子中途走开，过一会儿它会自己接着往下讲。
 
 - 赛道：AI 硬件产品创新
 - 硬件：Gemini-S1（全志 R528 / sun8iw20，128M NAND，单麦 + 喇叭 + LCD）
-- 应用版本：v2.53
+- 应用版本：v2.54
 
 ## 目录
 
 ```
 app/kid_buddy/     作品主体：1900 多行 C + 5 个角色技能文件
+board/nsh_minidisplay/
+                   板级配置（defconfig + Make.defs），本仓自带即可编译
 image/             预编译整机固件 + SHA256
 logs/              AI Coding 对话日志
+docs/              作品介绍、演示视频脚本、上游 PR 备忘
+.claude/skills/    开发过程中沉淀的 4 个 Skill
 contest2026_086_ditiekouyegoulianmeng.xml
                    manifest，把 app/kid_buddy 软链进编译树
 ```
@@ -30,7 +34,7 @@ contest2026_086_ditiekouyegoulianmeng.xml
 
 ### 一、直接烧预编译固件（最快）
 
-`image/kid_buddy_gemini-s1_uart0_128Mnand_v2.53.img` 是完整固件，用全志
+`image/kid_buddy_gemini-s1_uart0_128Mnand_v2.54.img` 是完整固件，用全志
 PhoenixSuit / LiveSuit 按常规流程烧进 NAND 即可。上电后 `rcS.nsh` 会自动拉起
 `kid_buddy`（图形界面）和 `ai_agent`（语音后台）。
 
@@ -44,10 +48,19 @@ repo init -u https://github.com/open-vela/contest2026_086_ditiekouyegoulianmeng 
 repo sync -c -j8
 
 # 在工作区根目录
-./build.sh vendor/allwinnertech/boards/r528/r528s3-gemini-s1/configs/nsh_minidisplay
+./build.sh contest2026_086_ditiekouyegoulianmeng/board/nsh_minidisplay
 ```
 
-`build.sh` 会拿板级 defconfig 覆盖 `.config` 后全量编译，结束时再把 `.config` 写回 defconfig。
+`build.sh` 会拿板级 defconfig 覆盖 `.config` 后全量编译，结束时再把它写回那个目录。
+
+板级配置放在**本仓**（`board/nsh_minidisplay/`）而不是 `vendor/allwinnertech` 里，是
+因为这份配置和 vendor 仓里那份**不是同一份**：vendor 那份是目标分支的通用配置，而这份
+是我们实际出固件用的——单麦增益为 1、关掉蓝牙整套、打开 `MBEDTLS_NET_C`。两者
+有 555 项差异，混用会编不过或者编出行为不对的固件（我们踩过：从 vendor 那份生成
+`.config` 会丢掉 `MBEDTLS_NET_C`，链接直接失败）。
+
+`configure.sh` 支持任意含 `defconfig` + `Make.defs` 的目录当板级配置，所以这样编是
+官方支持的用法，不是绕路。
 
 编完还要打包。**这两步都得做**，只编译不打包，板子跑的还是旧镜像：
 
@@ -108,6 +121,16 @@ cd vendor/allwinnertech/lichee
 ## 已知限制
 
 - 语音链路全在云端（LLM / ASR / TTS），断网就只剩界面能用。
-- 唤醒词是固定串「小伙伴」，不是通用的声学唤醒，环境吵的时候得离近点说。
-- 预编译固件做过构造校验：`nsh.fex` 与 `vela.bin` 逐字节同长，镜像里能查到版本号
-  `v2.53`、内建名 `kid_buddy` 和 `rcS.nsh` 的启动行。但**交赛前没来得及在真机上重烧一遍**。
+- 唤醒不是本地的声学唤醒（板子上没有 KWS 引擎），而是 VAD 掐出一句话、送 MiMo ASR
+  转写后再做字符串匹配，所以环境吵的时候得离近点说。
+- 唤醒词按大赛规定用「你好，openvela」。但转写是中英混说，ASR 输出的空格、大小写、
+  标点都不固定，`openvela` 还可能被音译成「欧本维拉」，所以匹配时会把大小写、空格、
+  标点全部忽略，并同时认几个常见音译写法。**这套写法只做过离线单测，没在真机上对着
+  真实 ASR 输出校准过** —— 如果喊不醒，日志里 `wake: heard "..."` 会打出原始转写，
+  照着往里加一条即可。
+- 预编译固件是为交赛用本仓的板级配置从零编出来的一份完整镜像（不是开发过程中的旧产物），
+  并做了构造校验：`nsh.fex` 与 `vela.bin` 同为 5952464 字节，镜像里能查到版本号 `v2.54`、
+  内建名 `kid_buddy` 和 `rcS.nsh` 的启动行；直接对镜像二进制搜字符串，新唤醒词
+  （`你好openvela` / `哈喽openvela` / 音译 `欧本维拉` / `欧朋维拉`）都在，**旧唤醒词
+  「小伙伴」一次都不出现**。但**这一版没有在真机上重烧验证过**——开发过程中各功能版本
+  （v2.53 及以前）都是在真机上跑过的。

@@ -1,0 +1,17 @@
+# 构建产物（组委会 .gitignore.example 建议）
+build/
+out/
+*.o
+*.a
+*.elf
+*.hex
+*.map
+
+# openvela/nuttx 逐个 app 构建时在源码目录留下的痕迹
+.built
+.depend
+Make.dep
+
+# 编辑器备份（.su 等）与无效的 .o 命名残留
+*.su
+*.c.*.o

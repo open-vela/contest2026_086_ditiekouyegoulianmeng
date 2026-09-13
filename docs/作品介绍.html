@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>kid_buddy 作品介绍</title><style>
+@page { size: A4; margin: 2cm 2cm 2cm 2cm; }
+body { font-family: "Noto Sans CJK SC","Noto Serif CJK SC",sans-serif;
+       font-size: 10.5pt; line-height: 1.7; color: #1a1a1a; }
+h1 { font-size: 20pt; border-bottom: 2.5pt solid #2c5f8a; padding-bottom: 6pt;
+     color: #1b3f5f; margin-bottom: 4pt; }
+h2 { font-size: 14pt; color: #2c5f8a; margin-top: 22pt; margin-bottom: 8pt;
+     border-left: 4pt solid #2c5f8a; padding-left: 8pt; }
+h3 { font-size: 11.5pt; color: #33556e; margin-top: 14pt; margin-bottom: 5pt; }
+p, li { text-align: justify; }
+table { border-collapse: collapse; width: 100%; margin: 10pt 0; font-size: 9.5pt; }
+th { background: #2c5f8a; color: #fff; padding: 6pt 8pt; text-align: left;
+     border: 0.75pt solid #244f73; }
+td { padding: 5pt 8pt; border: 0.75pt solid #b8c6d1; vertical-align: top; }
+tr:nth-child(even) td { background: #f4f7fa; }
+code { font-family: "Noto Sans Mono CJK SC",monospace; background: #eef2f6;
+       padding: 1pt 3pt; font-size: 9pt; border-radius: 2pt; }
+pre { background: #f6f8fa; border: 0.75pt solid #d5dde5; border-radius: 3pt;
+      padding: 8pt 10pt; font-size: 8.5pt; line-height: 1.45; overflow-x: auto;
+      white-space: pre-wrap; }
+pre code { background: none; padding: 0; }
+blockquote { border-left: 3.5pt solid #c9a227; background: #fdf8e8;
+             margin: 10pt 0; padding: 7pt 12pt; }
+hr { border: none; border-top: 0.75pt solid #ccd6df; margin: 18pt 0; }
+a { color: #1a6fb5; text-decoration: none; }
+</style></head>
+<body><h1>kid_buddy — 会讲故事的儿童 AI 伙伴</h1>
+<p><strong>2026 首届 openvela AI 硬件开发者大赛 · 参赛作品介绍</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>作品名称</td>
+<td>kid_buddy</td>
+</tr>
+<tr>
+<td>所属赛道</td>
+<td>AI 硬件产品创新</td>
+</tr>
+<tr>
+<td>队伍编号</td>
+<td>086</td>
+</tr>
+<tr>
+<td>硬件平台</td>
+<td>Gemini-S1（全志 R528 / sun8iw20，128M NAND，单麦 + 喇叭 + LCD）</td>
+</tr>
+<tr>
+<td>专属仓</td>
+<td>https://github.com/open-vela/contest2026_086_ditiekouyegoulianmeng</td>
+</tr>
+<tr>
+<td>应用版本</td>
+<td>v2.54</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>一、这是什么</h2>
+<p>一块巴掌大的板子，加一个能听会说的儿童玩伴。</p>
+<p>孩子对着它喊一声「你好，openvela」，它醒过来。之后可以随便聊天问问题，也可以<strong>挑一个
+角色进入一段冒险故事</strong>——老师、故事家、科学家、朋友，每个角色的说话方式和故事线都不
+一样。故事是<strong>有分支</strong>的：孩子选「推开木门」还是「绕到屋后」，后面走的是两条路。</p>
+<p>跟别的语音助手相比，它有三个地方是刻意做的：</p>
+<p><strong>故事和闲聊不混在一起。</strong> 孩子中途问一句「恐龙为什么会灭绝」，不会把剧情带跑偏。
+两个会话在系统里是分开存的，回来接着讲还在原来那条线上。</p>
+<p><strong>孩子走开了会自己接上。</strong> 讲了一半人跑了，过一会儿它会主动问：「上次的冒险讲到一半
+啦，还要继续吗？」</p>
+<p><strong>回答完还给一次机会。</strong> 回复完的十几秒内，孩子直接说「第二个」或者「继续」就行，
+不用再喊一遍唤醒词。小孩说不出「请重复上一句」这种话，这个窗口是替他们省事的。</p>
+<p>另外，孩子说「我懂啦」或者「这个我不太明白」的时候，会通过 MQTT 推一条确认消息到
+家长端——不是监控，是让家长知道今天聊到哪儿了。</p>
+<hr />
+<h2>二、怎么跑起来</h2>
+<h3>方式一：直接烧预编译固件（推荐）</h3>
+<pre><code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.54.img
+</code></pre>
+<p>用全志 PhoenixSuit / LiveSuit 按常规流程烧进 NAND。上电后启动脚本会自动拉起图形界面
+和语音后台，不需要再编任何东西。</p>
+<p>烧完屏幕上右上角会显示版本号（<code>v2.54</code>），可以用来确认新镜像确实生效了。</p>
+<h3>方式二：从源码编</h3>
+<p>本仓自带完整的板级配置（<code>board/nsh_minidisplay/</code>），不需要另外改 <code>vendor</code> 树：</p>
+<pre><code class="language-bash">repo init -u https://github.com/open-vela/contest2026_086_ditiekouyegoulianmeng \
+  -b dev-ai-contest-2026 -m contest2026_086_ditiekouyegoulianmeng.xml
+repo sync -c -j8
+
+# 在工作区根目录
+./build.sh contest2026_086_ditiekouyegoulianmeng/board/nsh_minidisplay
+</code></pre>
+<p>编译完成后打包：</p>
+<pre><code class="language-bash">cd vendor/allwinnertech/lichee
+./tools/scripts/pack_img.sh -c sun8iw20p1 -p rtos -b r528s3-gemini-s1 -o nuttx \
+  -d uart0 -s none -m normal -w none -v none -i none -t &quot;$PWD&quot; \
+  -f r528s3/gemini-s1_nand -g r528s3/gemini-s1_nand
+</code></pre>
+<blockquote>
+<p><strong>注意</strong>：改过 <code>packages/ai_agent</code> 的头文件之后，必须
+<code>make -C nuttx distclean</code> 再编。这套构建不跟踪头文件依赖，留着旧的目标文件会出现
+结构体大小对不上的问题。<code>make clean</code> 不够——它不清 <code>registry/</code> 和 <code>builtin_list.c</code>。</p>
+</blockquote>
+<hr />
+<h2>三、技术方案</h2>
+<h3>3.1 整体结构</h3>
+<pre><code>        ┌──────────────────────────────────────────┐
+        │  kid_buddy（本作品主体，1900+ 行 C）      │
+        │  LVGL 界面 · 角色状态机 · 剧情会话管理    │
+        └───────────────┬──────────────────────────┘
+                        │
+        ┌───────────────▼──────────────────────────┐
+        │  packages/ai_agent                       │
+        │  LLM 通道 · ASR · TTS · MQTT · 工具调用   │
+        └───────────────┬──────────────────────────┘
+                        │
+        ┌───────────────▼──────────────────────────┐
+        │  openvela / NuttX                        │
+        │  ALSA · mbedTLS · lwIP · LVGL · MQTT     │
+        └───────────────┬──────────────────────────┘
+                        │
+        ┌───────────────▼──────────────────────────┐
+        │  Gemini-S1 板级支持（全志 R528）          │
+        │  codec 驱动 · 启动脚本 · 板级配置          │
+        └──────────────────────────────────────────┘
+</code></pre>
+<h3>3.2 语音链路</h3>
+<p><strong>采集</strong>：本地能量阈值 VAD 掐出一句话（20ms 一帧，起止阈值带迟滞），只在没有回复在播
+的时候才开麦克风。</p>
+<p><strong>识别</strong>：音频送 MiMo ASR 转写。</p>
+<p><strong>唤醒</strong>：板子上没有本地 KWS 引擎，唤醒是在<strong>转写结果上做归一化匹配</strong>——大小写折叠、
+空格标点当分隔符、并认几个音译写法。这样「你好，openvela」「你好 openvela」
+「Hello，OpenVela」都能唤醒。</p>
+<p><strong>合成</strong>：MiMo TTS，<strong>一次回复只开关一次音频设备</strong>，按句流水线预取。</p>
+<h3>3.3 剧情会话隔离</h3>
+<p>这是这个作品里最能体现「不是套壳」的一块。</p>
+<p>自由聊天和冒险故事如果共用一份对话历史，剧情状态会被闲聊污染（反过来也一样：家长问
+一句天气，故事里的角色会突然开始聊天气）。</p>
+<p>做法是：进入故事模式时，这一路的请求带一个<strong>独立的会话标识</strong>，<code>ai_agent</code> 的会话管理
+器就把它的历史单独存一份。进出故事模式由语音触发（「我要听故事」/「不玩了」），
+状态落盘，中途断电再开机还能接着上次的剧情。</p>
+<h3>3.4 角色与技能</h3>
+<p>四个角色各是一份 Markdown 文件（<code>app/kid_buddy/skills/role-*.md</code>），里面是人设和剧情
+大纲。运行时载入并注入提示词，所以<strong>换角色、改人设不用重新编译</strong>——加一份文件就多一个
+角色。</p>
+<hr />
+<h2>四、做这个作品踩过的坑（也是它值钱的地方）</h2>
+<p>这部分写在作品介绍里，是因为它代表了真实的工程量。每一条都是先误判、再定位、最后改到
+驱动层或协议层才解决的。</p>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>真正的原因</th>
+<th>层次</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>只有第一句回复有声音，追问全哑</td>
+<td>codec 每次打开都无条件重配 DAC 时钟，把时钟打毛；且 <code>dapm_state</code> 没重置，模拟通路不再重跑</td>
+<td>内核驱动</td>
+</tr>
+<tr>
+<td>播放时麦克风报 <code>request dma chan failed</code></td>
+<td>单麦板子上采集与播放共享同一条 codec DMA，忙标志置晚了</td>
+<td>驱动 + 应用</td>
+</tr>
+<tr>
+<td>老是自己唤醒自己</td>
+<td>单麦板子用了 Kconfig 默认的采集增益 6，底噪被放大 36 倍顶穿 VAD</td>
+<td>配置</td>
+</tr>
+<tr>
+<td>TTS 时有时无</td>
+<td>云端端点是个负载均衡，个别后端 IP 在某段时间握手必失败</td>
+<td>网络协议</td>
+</tr>
+<tr>
+<td>每句话卡二十秒</td>
+<td>TLS 客户端对 keep-alive 的 chunked 响应一直读到服务端关连接，而 keep-alive 就是不会关</td>
+<td>协议实现</td>
+</tr>
+<tr>
+<td>提醒到点不响</td>
+<td>单线程的消息分发被一个卡住的 MQTT 连接阻塞，整条队列出不去</td>
+<td>并发</td>
+</tr>
+<tr>
+<td>多轮对话返回上一次的答案</td>
+<td>回复缓存的键用了被截断的当前消息，前缀相同时撞键</td>
+<td>状态管理</td>
+</tr>
+<tr>
+<td>结构体字段读出 240 这样的垃圾值</td>
+<td>构建系统不跟踪头文件依赖，改过头文件后链接的是旧目标文件</td>
+<td>构建系统</td>
+</tr>
+</tbody>
+</table>
+<p>这些改动里，与 openvela 公共仓有关的部分都按大赛规则单独提了 PR，没有直接改本地副本。</p>
+<hr />
+<h2>五、AI 开发流程</h2>
+<p><strong>全程使用 Claude Code。</strong> 从 7 月 25 日到 9 月 12 日，25 个有产出的开发日，完整对话
+记录在 <code>logs/</code> 目录里。</p>
+<p>AI 在这个项目里主要不是「写代码」，而是<strong>在信息不足的时候帮忙缩小范围</strong>：</p>
+<ul>
+<li>上面那张表里的「真正的原因」，大部分是先由 AI 根据日志和代码提出假设、再去验证的。
+  比如「TTS 时有时无」一开始怀疑是证书算法不被支持，去查那个 IP 才发现证书是健康的，
+  真正的问题是负载均衡的坏窗口。</li>
+<li>构建系统的坑（陈旧目标文件、配置不同步）也是 AI 从「代码明明改了但行为没变」这个
+  现象反推出来的。</li>
+</ul>
+<p><strong>沉淀的技能。</strong> 我们没有重写官方技能集已经覆盖的东西（编译、驱动、音频质量分析、
+提 PR 流程），而是把官方没覆盖、我们踩出来的部分写成了 4 个 Skill，放在本仓
+<code>.claude/skills/</code>：</p>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openvela-build-traps</code></td>
+<td>陈旧目标文件、<code>clean</code> 与 <code>distclean</code> 的区别、<code>build.sh</code> 会覆盖板级配置、第三方 app 补丁失效</td>
+</tr>
+<tr>
+<td><code>ai-agent-board-bringup</code></td>
+<td>ai_agent 的配置矩阵、按 IP 回退的 TLS 重试、chunked 响应读不完、MQTT 双线程互踢与队列阻塞</td>
+</tr>
+<tr>
+<td><code>voice-loop-tuning</code></td>
+<td>单麦增益、DMA 争用、codec 二次打开无声、唤醒词归一化匹配</td>
+</tr>
+<tr>
+<td><code>openvela-contest-submit</code></td>
+<td>ruleset 与 branch protection 的区别、CLA 邮箱、只能 rebase 合并导致 SHA 重写</td>
+</tr>
+</tbody>
+</table>
+<p>每个 Skill 的 <code>description</code> 里都写了触发条件（<code>Use when: ...</code>），Claude Code 会在遇到
+对应症状时自动选用。</p>
+<hr />
+<h2>六、已知限制</h2>
+<p>写在前面，不藏：</p>
+<ol>
+<li><strong>语音链路全在云端。</strong> LLM、ASR、TTS 都走网络，断网时只剩图形界面可用。</li>
+<li><strong>唤醒不是本地声学唤醒。</strong> 板子上没有 KWS 引擎，实际是 VAD + 云端 ASR 转写后做
+   字符串匹配，所以环境吵的时候得离近一点说。唤醒词的匹配写法做过离线单元测试
+   （含正例和不该唤醒的负例），但<strong>没有针对真实 ASR 输出做过大规模校准</strong>——日志里会
+   打印原始转写，遇到没覆盖的写法加一条即可。</li>
+<li><strong>上游 PR 尚未合入。</strong> 作品对 <code>packages_ai_agent</code> 和 <code>vendor_allwinnertech</code> 的改动
+   已按规则提了 PR，但组委会的评审有 CODEOWNERS 闸门，参赛者无法自行合并。因此
+   <strong>本仓的预编译固件是实际交付方式</strong>——镜像里已经包含了这些改动，烧录后功能是完整的。</li>
+<li><strong>预编译固件的验证程度。</strong> 交付镜像是用本仓的板级配置从零编出来的，做过构造校验：
+   分段长度一致、版本号 <code>v2.54</code> 与内建程序名在镜像里查得到；直接搜镜像二进制，
+   新唤醒词的几种写法都在、<strong>旧唤醒词「小伙伴」完全不出现</strong>。但<strong>本次交赛用的
+   这一版没有在真机上重新烧录验证</strong>。开发过程中的各功能版本（v2.53 及以前）都是在真机上
+   验证过的。</li>
+<li>服务端（LLM / ASR / TTS / MQTT broker）需要自行搭建，作品本身不含服务端。</li>
+</ol>
+<hr />
+<h2>七、目录说明</h2>
+<pre><code>app/kid_buddy/          作品主体：1900+ 行 C + 5 个技能文件
+board/nsh_minidisplay/  板级配置（defconfig + Make.defs），自带即可编译
+image/                  预编译整机固件 + SHA256
+logs/                   AI Coding 对话日志（2026-07-25 ~ 09-12）
+.claude/skills/         本队沉淀的 4 个开发 Skill
+docs/                   作品介绍、演示脚本、上游 PR 备忘
+contest2026_086_ditiekouyegoulianmeng.xml
+                        manifest，把 app/kid_buddy 软链进编译树
+</code></pre></body></html>

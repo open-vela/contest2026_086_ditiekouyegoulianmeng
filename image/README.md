@@ -4,8 +4,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `kid_buddy_gemini-s1_uart0_128Mnand_v2.53.img` | Gemini-S1（全志 R528）NAND 整机镜像，应用版本 `v2.53` |
-| `kid_buddy_gemini-s1_uart0_128Mnand_v2.53.img.sha256` | 上者的 SHA256 校验和 |
+| `kid_buddy_gemini-s1_uart0_128Mnand_v2.54.img` | Gemini-S1（全志 R528）NAND 整机镜像，应用版本 `v2.54` |
+| `kid_buddy_gemini-s1_uart0_128Mnand_v2.54.img.sha256` | 上者的 SHA256 校验和 |
 
 ## 镜像内容
 
@@ -15,8 +15,9 @@
   `dev-ai-contest-2026` 分支上，评审合入前，直接按 `openvela.xml` 编译本仓会因缺少
   `velaclaw_ask_req_t.chat_id` / `velaclaw_publish()` / `velaclaw_set_notify_callback()`
   而链接失败 —— 本预编译镜像即为规避该依赖、保证可复现而提供。
-- **板级改动**：`vendor/allwinnertech` 的 3 个文件（板级 defconfig、启动脚本 `rcS.nsh`、
-  音频 codec 驱动），已随镜像生效。
+- **板级改动**：本仓 `board/nsh_minidisplay/`（板级 defconfig + `Make.defs`）与
+  `vendor/allwinnertech` 的 3 个文件（启动脚本 `rcS.nsh`、音频 codec 驱动、以及
+  上游板级 defconfig），已随镜像生效。
 
 ## 烧录
 
@@ -28,5 +29,5 @@
 ## 校验
 
 ```bash
-sha256sum -c kid_buddy_gemini-s1_uart0_128Mnand_v2.53.img.sha256
+sha256sum -c kid_buddy_gemini-s1_uart0_128Mnand_v2.54.img.sha256
 ```

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1f2937">
+<title>小板伴 · 家长控制台</title>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card2: #273449;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --ok: #34d399;
+    --err: #f87171;
+    --line: #334155;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; height: 100dvh;
+  }
+  header {
+    padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; flex: 1; }
+  #statusDot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  #statusDot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  #statusText { font-size: 12px; color: var(--muted); }
+
+  main { flex: 1; overflow-y: auto; padding: 12px 12px 4px; display: flex; flex-direction: column; gap: 12px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .card summary { cursor: pointer; font-size: 13px; color: var(--muted); user-select: none; }
+  details .card-body { margin-top: 10px; }
+
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field input {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card2); color: var(--text); font-size: 15px; outline: none;
+  }
+  .field input:focus { border-color: var(--accent); }
+
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+
+  button {
+    border: none; border-radius: 10px; padding: 12px 16px; font-size: 15px; font-weight: 600;
+    cursor: pointer; color: #0f172a; background: var(--accent); width: 100%;
+  }
+  button:active { opacity: 0.85; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  button.danger { background: transparent; color: var(--err); border: 1px solid var(--err); }
+
+  #log { flex: 1; min-height: 180px; max-height: 44vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .msg { padding: 10px 12px; border-radius: 10px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .msg.in  { background: var(--card2); align-self: flex-start; max-width: 88%; border: 1px solid var(--line); }
+  .msg.out { background: var(--accent); color: #0f172a; align-self: flex-end; max-width: 88%; }
+  .msg.sys { background: transparent; color: var(--muted); font-size: 12px; align-self: center; text-align: center; }
+  .msg .meta { display: block; font-size: 11px; opacity: 0.6; margin-top: 4px; }
+  .msg.in .meta { color: var(--muted); }
+
+  footer {
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    background: var(--card); border-top: 1px solid var(--line);
+  }
+  #chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+  .chip {
+    flex: none; white-space: nowrap; padding: 8px 14px; border-radius: 999px;
+    background: var(--card2); border: 1px solid var(--line); color: var(--text); font-size: 13px; cursor: pointer;
+  }
+  .chip:active { border-color: var(--accent); }
+  #composer { display: flex; gap: 8px; }
+  #composer input { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: var(--text); font-size: 15px; outline: none; }
+  #composer input:focus { border-color: var(--accent); }
+  #composer button { width: auto; padding: 12px 18px; }
+</style>
+</head>
+<body>
+  <header>
+    <span id="statusDot"></span>
+    <h1>小板伴 · 家长控制台</h1>
+    <span id="statusText">未连接</span>
+  </header>
+
+  <main>
+    <details class="card" open>
+      <summary>连接设置</summary>
+      <div class="card-body">
+        <div class="field">
+          <label>Broker 地址（WebSocket）</label>
+          <input id="brokerUrl" type="text" placeholder="ws://192.168.1.100:9001" inputmode="url" autocapitalize="off">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>我的 chat_id</label>
+            <input id="chatId" type="text" value="parent" autocapitalize="off">
+          </div>
+          <div class="field">
+            <label>发送 topic（→板子）</label>
+            <input id="topicIn" type="text" value="agent/in" autocapitalize="off">
+          </div>
+          <div class="field">
+            <label>接收 topic（板子→）</label>
+            <input id="topicOut" type="text" value="agent/out" autocapitalize="off">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>用户名（可空）</label>
+            <input id="username" type="text" autocapitalize="off" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>密码（可空）</label>
+            <input id="password" type="password" autocomplete="off">
+          </div>
+        </div>
+        <div class="row">
+          <button id="btnConnect" onclick="connect()">连接</button>
+          <button id="btnDisconnect" class="danger" onclick="disconnect()" style="display:none">断开</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="card" style="flex:1; display:flex; flex-direction:column;">
+      <div id="log"></div>
+    </div>
+  </main>
+
+  <footer>
+    <div id="chips">
+      <span class="chip" onclick="sendText('提醒孩子 30 秒后喝水')">💧 提醒喝水</span>
+      <span class="chip" onclick="sendText('提醒孩子 1 分钟后去睡觉')">🌙 提醒睡觉</span>
+      <span class="chip" onclick="sendText('你好呀，爸爸在手机这头')">👋 打个招呼</span>
+      <span class="chip" onclick="askReport()">✅ 看孩子回执</span>
+    </div>
+    <div id="composer">
+      <input id="input" type="text" placeholder="输入要发给板子的话…" enterkeyhint="send">
+      <button onclick="sendInput()">发送</button>
+    </div>
+  </footer>
+
+<script>
+  var client = null;
+  var connected = false;
+
+  var $ = function(id){ return document.getElementById(id); };
+
+  function loadSettings(){
+    try {
+      var s = JSON.parse(localStorage.getItem('kidbuddy-settings') || '{}');
+      if (s.brokerUrl) $('brokerUrl').value = s.brokerUrl;
+      if (s.chatId)    $('chatId').value = s.chatId;
+      if (s.topicIn)   $('topicIn').value = s.topicIn;
+      if (s.topicOut)  $('topicOut').value = s.topicOut;
+      if (s.username)  $('username').value = s.username;
+    } catch(e){}
+  }
+
+  function saveSettings(){
+    try {
+      localStorage.setItem('kidbuddy-settings', JSON.stringify({
+        brokerUrl: $('brokerUrl').value.trim(),
+        chatId: $('chatId').value.trim(),
+        topicIn: $('topicIn').value.trim(),
+        topicOut: $('topicOut').value.trim(),
+        username: $('username').value.trim()
+      }));
+    } catch(e){}
+  }
+
+  function log(text, kind, meta){
+    var el = document.createElement('div');
+    el.className = 'msg ' + (kind || 'sys');
+    el.textContent = text;
+    if (meta) {
+      var m = document.createElement('span');
+      m.className = 'meta';
+      m.textContent = meta;
+      el.appendChild(m);
+    }
+    $('log').appendChild(el);
+    $('log').scrollTop = $('log').scrollHeight;
+  }
+
+  function setStatus(on, text){
+    connected = on;
+    $('statusDot').className = on ? 'on' : '';
+    $('statusText').textContent = text;
+    $('btnConnect').style.display = on ? 'none' : '';
+    $('btnDisconnect').style.display = on ? '' : 'none';
+  }
+
+  function connect(){
+    var url = $('brokerUrl').value.trim();
+    if (!url) { log('请先填写 Broker 地址（如 ws://192.168.1.100:9001）', 'sys'); return; }
+    saveSettings();
+    log('正在连接 ' + url + ' …', 'sys');
+
+    var opts = {
+      clean: true,
+      reconnectPeriod: 3000,
+      connectTimeout: 8000,
+      clientId: 'phone-app-' + Math.random().toString(16).slice(2, 10)
+    };
+    var u = $('username').value.trim();
+    var p = $('password').value;
+    if (u) opts.username = u;
+    if (p) opts.password = p;
+
+    client = mqtt.connect(url, opts);
+
+    client.on('connect', function(){
+      setStatus(true, '已连接');
+      log('已连接，订阅 ' + $('topicOut').value.trim(), 'sys');
+      client.subscribe($('topicOut').value.trim(), { qos: 1 });
+    });
+
+    client.on('message', function(topic, payload){
+      var text = '';
+      try { text = new TextDecoder('utf-8').decode(payload); } catch(e){ text = String(payload); }
+      var meta = '来自 ' + topic;
+      try {
+        var obj = JSON.parse(text);
+        if (obj.content) text = obj.content;
+        if (obj.chat_id) meta = '来自 ' + topic + ' · ' + obj.chat_id;
+        if (obj.type === 'response') text = '📥 ' + text;
+      } catch(e){}
+      log(text, 'in', meta);
+    });
+
+    client.on('error', function(err){
+      log('连接错误：' + (err && err.message ? err.message : err), 'sys');
+    });
+
+    client.on('close', function(){
+      if (connected) setStatus(false, '已断开');
+    });
+
+    client.on('offline', function(){ setStatus(false, '重连中…'); });
+    client.on('reconnect', function(){ log('正在重连…', 'sys'); });
+  }
+
+  function disconnect(){
+    if (client) { try { client.end(true); } catch(e){} client = null; }
+    setStatus(false, '已断开');
+    log('已手动断开', 'sys');
+  }
+
+  function publish(obj){
+    if (!client || !connected) { log('未连接，请先连接 broker', 'sys'); return; }
+    var topic = $('topicIn').value.trim();
+    var payload = JSON.stringify(obj);
+    client.publish(topic, payload, { qos: 1 });
+    log(obj.content || payload, 'out', '发给 ' + topic);
+  }
+
+  function sendText(text){
+    publish({ type: 'message', content: text, chat_id: $('chatId').value.trim() || 'parent' });
+  }
+
+  function sendInput(){
+    var t = $('input').value.trim();
+    if (!t) return;
+    sendText(t);
+    $('input').value = '';
+    $('input').focus();
+  }
+
+  function askReport(){
+    log('提示：孩子确认后回执会以 response 形式出现在下方，chat_id 为你填的 chat_id', 'sys');
+  }
+
+  $('input').addEventListener('keydown', function(e){
+    if (e.key === 'Enter') sendInput();
+  });
+
+  loadSettings();
+  log('小板伴家长控制台已就绪。填好 Broker 地址点「连接」。', 'sys');
+</script>
+</body>
+</html>

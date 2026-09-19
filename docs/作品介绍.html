@@ -26,7 +26,8 @@ blockquote { border-left: 3.5pt solid #c9a227; background: #fdf8e8;
 hr { border: none; border-top: 0.75pt solid #ccd6df; margin: 18pt 0; }
 a { color: #1a6fb5; text-decoration: none; }
 </style></head>
-<body><h1>kid_buddy — 会讲故事的儿童 AI 伙伴</h1>
+<body>
+<h1>kid_buddy — 会讲故事的儿童 AI 伙伴</h1>
 <p><strong>2026 首届 openvela AI 硬件开发者大赛 · 参赛作品介绍</strong></p>
 <table>
 <thead>
@@ -58,16 +59,26 @@ a { color: #1a6fb5; text-decoration: none; }
 </tr>
 <tr>
 <td>应用版本</td>
-<td>v2.56</td>
+<td>v2.67</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2>一、这是什么</h2>
+<h2>一、用户故事</h2>
 <p>一块巴掌大的板子，加一个能听会说的儿童玩伴。</p>
 <p>孩子对着它喊一声「你好，openvela」，它醒过来。之后可以随便聊天问问题，也可以<strong>挑一个
 角色进入一段冒险故事</strong>——老师、故事家、科学家、朋友，每个角色的说话方式和故事线都不
 一样。故事是<strong>有分支</strong>的：孩子选「推开木门」还是「绕到屋后」，后面走的是两条路。</p>
+<p><strong>屏幕上是一张脸。</strong> 界面没有页面、没有按钮、没有菜单，整块屏就是一张用圆和弧线画的
+脸：平静、高兴、惊讶、专注、难过、困倦六种表情，配上头顶的小道具（转圈的三点、随说话
+音量起伏的弧、摇晃的铃铛、飘的泡泡），把二十来个设备状态翻译成孩子一眼能看懂的表情。
+屏的右缘露出四条彩色书签带，点一下换角色。底部三分之一是一块三行的字幕板：第一行是
+孩子刚说的话，下面两行是它的回复正文——<strong>正文放不下会自动往上滚</strong>，每两秒半走一行，
+走到底再回到开头，所以整段回复都读得到。</p>
+<p>字幕是后来加回来的——最初想让屏幕上一个字都没有，看完脸的表情出图才改的主意。原因
+不是孩子（六岁的孩子读不了那段正文），是<strong>给旁边的大人看的</strong>：这块板子的语音全在
+云端，网络一不好就会哑，而<strong>哑掉听起来和「玩具不想理你」一模一样</strong>。屏幕上有字，是
+唯一能证明它还活着的东西。所以语音一旦失败，脸一定会显「难过」——字幕是旁证，不是提示。</p>
 <p>跟别的语音助手相比，它有三个地方是刻意做的：</p>
 <p><strong>故事和闲聊不混在一起。</strong> 孩子中途问一句「恐龙为什么会灭绝」，不会把剧情带跑偏。
 两个会话在系统里是分开存的，回来接着讲还在原来那条线上。</p>
@@ -77,14 +88,100 @@ a { color: #1a6fb5; text-decoration: none; }
 不用再喊一遍唤醒词。小孩说不出「请重复上一句」这种话，这个窗口是替他们省事的。</p>
 <p>另外，孩子说「我懂啦」或者「这个我不太明白」的时候，会通过 MQTT 推一条确认消息到
 家长端——不是监控，是让家长知道今天聊到哪儿了。</p>
+<h3>功能清单</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>怎么触发</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>语音唤醒</td>
+<td>说「你好，openvela」</td>
+<td>板子没有本地 KWS，唤醒是在 ASR 转写结果上做归一化字符串匹配，认大小写/空格/标点差异和几个音译写法</td>
+</tr>
+<tr>
+<td>自由问答</td>
+<td>唤醒后直接说</td>
+<td>ASR → LLM → TTS 全链路，流式按句播报，首句出声不用等整段生成完</td>
+</tr>
+<tr>
+<td>四个角色</td>
+<td>语音说「换一个角色」，或点屏右缘的书签带</td>
+<td>老师 / 故事家 / 科学家 / 朋友，各有说话方式与知识范围，换角色会换背景色</td>
+</tr>
+<tr>
+<td>分支剧情故事</td>
+<td>说「我们来玩冒险游戏」</td>
+<td>讲背景 → 给 2~3 个选项 → 孩子语音选 → 剧情按选择走 → 再给选项，直到结局</td>
+</tr>
+<tr>
+<td>剧情与闲聊隔离</td>
+<td>自动</td>
+<td>故事模式和自由问答各存一份会话历史，中途问别的不会把剧情带跑偏</td>
+</tr>
+<tr>
+<td>断点续讲</td>
+<td>自动</td>
+<td>故事进度落盘，讲一半断电，下次开机接着上次那条线讲</td>
+</tr>
+<tr>
+<td>主动续讲</td>
+<td>孩子走开后</td>
+<td>故事讲一半没人接，过一会儿 Agent 主动开口问「上次的冒险讲到一半啦，还要继续吗」</td>
+</tr>
+<tr>
+<td>追问窗口</td>
+<td>回复后十几秒内直接说</td>
+<td>不用再喊唤醒词，说「第二个」「继续」就行——小孩说不出「请重复上一句」这种话</td>
+</tr>
+<tr>
+<td>定时提醒</td>
+<td>说「提醒我 10 分钟后喝水」</td>
+<td>模型自己调 cron 工具建定时任务，到点铃铛响 + 出声，需要孩子确认才消</td>
+</tr>
+<tr>
+<td>家长端确认上报</td>
+<td>孩子说「我懂啦」「这个我不太明白」</td>
+<td>通过 MQTT 推一条消息到家长端网页，让家长知道今天聊到哪儿了</td>
+</tr>
+<tr>
+<td>全屏脸谱界面</td>
+<td>自动</td>
+<td>纯 LVGL 图元画的六张表情脸 + 六种道具，把二十来个设备状态翻译成表情，屏上一个字都没有</td>
+</tr>
+<tr>
+<td>字幕板 + 滚动</td>
+<td>自动</td>
+<td>底部三分之一：孩子的话一行、回复正文两行，正文放不下会自己往上滚一圈</td>
+</tr>
+<tr>
+<td>失败可见</td>
+<td>网络断了的时候</td>
+<td>TTS/LLM 一旦失败就显「难过」并播一句中文安抚语——语音哑掉必须和「玩具不想理你」区分开</td>
+</tr>
+<tr>
+<td>自愈</td>
+<td>自动</td>
+<td>开机先校时（板子无 RTC，时钟停在 1970 会让 TLS 全挂）、回复卡死有看门狗恢复、TLS 握手失败逐 IP 重试</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2>二、怎么跑起来</h2>
 <h3>方式一：直接烧预编译固件（推荐）</h3>
-<pre><code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.56.img
+<pre><code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.67.img
 </code></pre>
 <p>用全志 PhoenixSuit / LiveSuit 按常规流程烧进 NAND。上电后启动脚本会自动拉起图形界面
 和语音后台，不需要再编任何东西。</p>
-<p>烧完屏幕上右上角会显示版本号（<code>v2.56</code>），可以用来确认新镜像确实生效了。</p>
+<p>确认镜像生效：开机时串口（uart0，115200 8N1）会打出当前应用版本号和实际屏幕分辨率：</p>
+<pre><code>[kid_buddy] GUI v2.67 display 320x240
+[kid_buddy] face UI v2.67 on 320x240 (face band 162, panel 6,166 278x69, 33 cols)
+</code></pre>
+<p>屏幕本身不再显示版本号——右上角那个位置现在是书签带，整屏只有一张脸和底部三行字幕。</p>
 <h3>方式二：从源码编</h3>
 <p>本仓自带完整的板级配置（<code>board/nsh_minidisplay/</code>），不需要另外改 <code>vendor</code> 树：</p>
 <pre><code class="language-bash">repo init -u https://github.com/open-vela/contest2026_086_ditiekouyegoulianmeng \
@@ -109,7 +206,7 @@ repo sync -c -j8
 <h2>三、技术方案</h2>
 <h3>3.1 整体结构</h3>
 <pre><code>        ┌──────────────────────────────────────────┐
-        │  kid_buddy（本作品主体，1900+ 行 C）      │
+        │  kid_buddy（本作品主体，4200+ 行 C）      │
         │  LVGL 界面 · 角色状态机 · 剧情会话管理    │
         └───────────────┬──────────────────────────┘
                         │
@@ -143,14 +240,121 @@ repo sync -c -j8
 <p>做法是：进入故事模式时，这一路的请求带一个<strong>独立的会话标识</strong>，<code>ai_agent</code> 的会话管理
 器就把它的历史单独存一份。进出故事模式由语音触发（「我要听故事」/「不玩了」），
 状态落盘，中途断电再开机还能接着上次的剧情。</p>
-<h3>3.4 角色与技能</h3>
-<p>四个角色各是一份 Markdown 文件（<code>app/kid_buddy/skills/role-*.md</code>），里面是人设和剧情
-大纲。运行时载入并注入提示词，所以<strong>换角色、改人设不用重新编译</strong>——加一份文件就多一个
-角色。</p>
+<h3>3.4 角色的人设从哪来</h3>
+<p><code>app/kid_buddy/skills/</code> 下有 5 份英文 Markdown（<code>role-teacher.md</code> / <code>role-storyteller.md</code> /
+<code>role-scientist.md</code> / <code>role-friend.md</code> / <code>role-switch.md</code>），是人设的<strong>设计稿</strong>：性格、
+知识范围、说话方式、安全边界、示例对话。</p>
+<p><strong>运行时并不读这些文件。</strong> 真正注入提示词的是 <code>kid_buddy.c</code> 里 <code>g_roles[]</code> 的
+<code>system_prompt</code> 中文字符串。它是在英文设计稿的基础上改写的，并加了几条面向这个硬件的
+硬约束——只讲简体中文、回答 100 字以内、禁止 Markdown 标记、禁止任何引号（TTS 会把引号
+念出来）、以及"孩子想玩故事时切换成故事主持人"。</p>
+<p>代价说清楚：<strong>换角色、改人设要改 <code>g_roles[]</code> 并重新编译</strong>，不加载文件。
+保留英文稿是因为它比压缩后的提示词完整得多，是改人设时的参照；两份是手工同步的。</p>
+<h3>3.5 界面：一张纯几何的脸</h3>
+<p>整块屏（320×240）是一张用 LVGL 图元画的脸，<strong>不带任何美术素材</strong>——没有 PNG、没有字体
+图标，全部是圆角矩形、圆和弧：</p>
+<table>
+<thead>
+<tr>
+<th>部位</th>
+<th>画法</th>
+<th>怎么动</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>背景</td>
+<td>屏幕对象本身</td>
+<td>换角色时换色</td>
+</tr>
+<tr>
+<td>眼白</td>
+<td>圆角矩形（半径固定在眼宽的 37%）</td>
+<td>只改高度 = 眨眼 / 眯眼</td>
+</tr>
+<tr>
+<td>瞳孔 + 高光</td>
+<td>小圆</td>
+<td>改坐标 = 视线漂移</td>
+</tr>
+<tr>
+<td>眉毛</td>
+<td>细长圆角矩形</td>
+<td>绕内端旋转 = 抬 / 压 / 皱眉</td>
+</tr>
+<tr>
+<td>嘴</td>
+<td><code>lv_arc</code></td>
+<td>改起止角 = 笑 / 平 / 撇嘴</td>
+</tr>
+<tr>
+<td>道具</td>
+<td>三点 / 弧 / 铃铛 / 泡泡 / 弯钩 / 小手</td>
+<td>转圈 / 随音量起伏 / 摆动 / 上浮</td>
+</tr>
+<tr>
+<td>书签带 ×4</td>
+<td>贴右缘的圆角矩形</td>
+<td>选中态抽出来 + 提亮</td>
+</tr>
+<tr>
+<td>字幕板</td>
+<td>一块半透明底板 + 3 个标签</td>
+<td>第 1 行孩子的话；下方是一个两行高的窗口，回复正文（最多 8 行）在窗口后面向上滚动</td>
+</tr>
+</tbody>
+</table>
+<p>一张 100 ms 的定时器驱动全部表情变化，并且<strong>只写真正变了的属性</strong>。这一条不是优化技巧，
+是这个板上必须守的规矩。</p>
+<h3>3.6 用到了 ai_agent 的哪些能力</h3>
+<p>这是本作品和「自己接一个大模型写个语音助手」最大的区别：<strong>判断和动作都在框架里，不在应用里。</strong></p>
+<table>
+<thead>
+<tr>
+<th>ai_agent 的能力</th>
+<th>我们怎么用的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主动任务机制</td>
+<td>提醒是模型自己调 cron 工具建的定时任务（<code>infra/cron_service.c</code> 落到 <code>/data/ai_agent/cron.json</code>，重启不丢）；故事讲一半孩子走开了，由 idle 触发主动续讲</td>
+</tr>
+<tr>
+<td>意图分流</td>
+<td>「提醒我十分钟后喝水」「我们来玩冒险游戏」「换一个角色」这三句话没有被应用层的关键词表分发。技能摘要（<code>skill_loader_build_summary()</code>）进系统提示词，模型自己决定是调 cron 工具、还是读 <code>story-rpg</code> 技能照做</td>
+</tr>
+<tr>
+<td>Tool 调用</td>
+<td>Agent 主循环带着工具表跑（<code>agent_loop.c</code> 挂 <code>tool_registry_get_tools_json()</code>，工具结果回灌后再让模型说下一轮）。提醒的增删查走 cron 工具，讲故事走读文件</td>
+</tr>
+<tr>
+<td>自然语言 → 结构化</td>
+<td>「十分钟后喝水」里的时间和事由由模型解析成 cron 的结构化参数，不是我们写死的解析器</td>
+</tr>
+<tr>
+<td>Skill 体系</td>
+<td>自定义技能 <code>story-rpg</code>：一份 Markdown 放在 <code>/data/agent/skills/story-rpg.md</code>，开机由 <code>skill_loader_init()</code> 写入，内容是「怎么起头、每轮怎么给选项、选项要用完整口语不能念 ABC、怎么续、怎么收尾」的操作手册。模型读了它才会讲故事</td>
+</tr>
+<tr>
+<td>会话管理</td>
+<td>故事模式走独立 <code>chat_id</code>，历史与自由问答各存一份</td>
+</tr>
+<tr>
+<td>记忆</td>
+<td>历史落盘 + 开机读回，所以断电再开机能接着上次的剧情讲</td>
+</tr>
+<tr>
+<td>多渠道</td>
+<td>同一套 Agent 逻辑同时接语音（板载麦 / 喇叭）、CLI（NSH）、MQTT（家长端网页），我们只在渠道特性上做适配</td>
+</tr>
+</tbody>
+</table>
+<p>板子这一侧，<code>kid_buddy.c</code> 通过 <code>velaclaw_ask()</code> 把请求推进消息总线，剩下的都在框架里跑。</p>
 <hr />
 <h2>四、做这个作品踩过的坑（也是它值钱的地方）</h2>
-<p>这部分写在作品介绍里，是因为它代表了真实的工程量。每一条都是先误判、再定位、最后改到
-驱动层或协议层才解决的。</p>
+<p>这部分写在作品介绍里，是因为它代表了真实的工程量。每一条都是先误判、再定位，最后改到
+驱动层、协议层或绘制层才解决的。</p>
 <table>
 <thead>
 <tr>
@@ -202,7 +406,7 @@ repo sync -c -j8
 </tr>
 <tr>
 <td>改过启动脚本、重编也报成功，行为却没变</td>
-<td>构建系统只把 <code>etc/init.d/rcS</code> 列为依赖，而它全部内容是 <code>#include &quot;rcS.nsh&quot;</code>，<code>rcS.nsh</code> 压根不在依赖表里，改它永远不触发重生成</td>
+<td>构建系统只把 <code>etc/init.d/rcS</code> 列为依赖，而它全部内容是 <code>#include "rcS.nsh"</code>，<code>rcS.nsh</code> 压根不在依赖表里，改它永远不触发重生成</td>
 <td>构建系统</td>
 </tr>
 <tr>
@@ -215,13 +419,45 @@ repo sync -c -j8
 <td>板子没有 RTC，系统时钟停在 1970，HTTPS 证书的 notBefore 校验全部失败</td>
 <td>系统 / 网络协议</td>
 </tr>
+<tr>
+<td>待机时板子也一直在刷屏</td>
+<td>LVGL 在这块板上是<strong>整屏单缓冲</strong>（<code>CONFIG_LV_NUTTX_LCD_BUFFER_COUNT=1</code>），任何一处失效都要重绘并刷<strong>整块屏</strong>，一次 153,600 字节、"只重绘脸那块"的优化完全不成立</td>
+<td>图形栈</td>
+</tr>
+<tr>
+<td>回复念到一半就没了，脸上也没有省略号</td>
+<td>LVGL 标签<strong>会裁掉自己的溢出</strong>。换行既发生在格子用完时、也发生在 <code>\n</code> 和空格处，只按格子数算行数会多算出一行，多出来的那行不报错、不画出来、安静消失</td>
+<td>应用逻辑</td>
+</tr>
+<tr>
+<td>算好的行宽比实际窄 8px，于是又折了一行</td>
+<td>判断全角用的「U+2000 以上是宽的」是错的：实测字体里有 <strong>128 个更小的码点也是全角</strong>（<code>° ± × ÷</code>、希腊字母、西里尔字母），有一个「°」算成半角就正好够再折一次行</td>
+<td>字体度量</td>
+</tr>
+<tr>
+<td>说话时偶有爆音</td>
+<td>屏走的 SPI1 和音频采集/播放共用 DMA 通道，动画帧率一高就抢</td>
+<td>硬件</td>
+</tr>
+<tr>
+<td>正文两行装不下，后面的内容够不着</td>
+<td>提示词要求模型答 100 字，两行 33 格只有 66 格——<strong>上限是屏幕给的，不是模型给的</strong>。解法是把上面那条"标签会裁掉自己的溢出"反过来用：标签比窗口高、放进一个正好两行高的对象里，定时往上移，同一套裁切就从限制变成了滚动的窗口</td>
+<td>应用逻辑</td>
+</tr>
 </tbody>
 </table>
+<p>后面这几条是这个作品的两块新界面带来的：前几条是重做界面时<strong>踩进去</strong>的，共同点是<strong>从代码
+上完全看不出来</strong>——要把 LVGL 的源码读到绘制层，或者把字体文件解析出来量一遍，才知道真正
+的原因在哪；倒数第二条（SPI 和音频抢 DMA）不是撞上的，是<strong>在驱动源码的注释里先读到、
+再主动绕开</strong>的，它决定了整套动画的帧率预算怎么分；最后一条是把同一个裁切机制反过来用
+——先当成坑踩了一次，再当成工具用了一次。</p>
 <p>这些改动里，与 openvela 公共仓有关的部分都按大赛规则单独提了 PR，没有直接改本地副本。</p>
 <hr />
 <h2>五、AI 开发流程</h2>
-<p><strong>全程使用 Claude Code。</strong> 从 7 月 25 日到 9 月 12 日，25 个有产出的开发日，完整对话
-记录在 <code>logs/</code> 目录里。</p>
+<p><strong>全程使用 Claude Code。</strong> 从 7 月 25 日到 9 月 18 日，近两个月的开发周期。应用本身、
+界面重做、上游那 5 个 PR、以及第四节里全部排障，都是在这个流程里做出来的。</p>
+<p>完整对话记录在 <code>logs/</code> 目录里（<code>manifest.json</code> 记录会话清单与导出时间）。注意这份导出
+是 <strong>09-12 的快照</strong>，09-13 之后的界面重做不在其中 —— 提交前需要重跑一次归集工具。</p>
 <p>AI 在这个项目里主要不是「写代码」，而是<strong>在信息不足的时候帮忙缩小范围</strong>：</p>
 <ul>
 <li>上面那张表里的「真正的原因」，大部分是先由 AI 根据日志和代码提出假设、再去验证的。
@@ -273,24 +509,31 @@ repo sync -c -j8
 <li><strong>上游 PR 尚未合入。</strong> 作品对 <code>packages_ai_agent</code> 和 <code>vendor_allwinnertech</code> 的改动
    已按规则提了 PR，但组委会的评审有 CODEOWNERS 闸门，参赛者无法自行合并。因此
    <strong>本仓的预编译固件是实际交付方式</strong>——镜像里已经包含了这些改动，烧录后功能是完整的。</li>
-<li><strong>预编译固件的验证程度。</strong> 当前交付的 v2.56 修掉了两个<strong>从真机串口日志里定位出来</strong>
-   的问题（<code>/dev/lcd0</code> 未注册导致白屏、系统时钟停在 1970 导致 HTTPS 全部失败，见第四节）。
-   时钟这一条的具体修法是让 kid_buddy 启动时自己调 <code>clock_settime</code>（NuttX 的
-   <code>date -s</code> 底下就是这个调用），并且只在时钟明显没设过的时候才写，<strong>这样从源码编出来的
-   固件也覆盖得到</strong>——原先这一步写在 vendor 的 <code>rcS.nsh</code> 里，只有本仓这份预编译镜像才带。
-   <strong>白屏一项已在真机上复烧确认修复</strong>（v2.55 上板：图形界面正常显示、版本号对得上）。
-   镜像还做过构造校验：<code>nsh.fex</code> 与 <code>vela.bin</code> 同为 5828112 字节且逐字节一致；版本号
-   <code>v2.56</code>、内建程序名、以及新增的时钟种子代码在镜像里都查得到；<strong>内嵌的那份启动脚本里
-   已经不再有 <code>date -s</code></strong>；直接搜镜像二进制，新唤醒词的几种写法都在、<strong>旧唤醒词「小伙伴」
-   完全不出现</strong>。但 v2.56 相对 v2.55 只多改了时钟这一处，<strong>尚未上板复测</strong>；
-   <strong>语音链路（唤醒 → ASR → LLM → TTS）也没有在这一版上重新实测</strong>——唤醒词的匹配写法
-   只做过离线单测，没有对着真实 ASR 输出校准过。开发过程中的各功能版本（v2.53 及以前）
-   都是在真机上验证过的。</li>
+<li><strong>预编译固件的验证程度较低。</strong> 这条单独放在下面 6.1 说清楚。</li>
 <li>服务端（LLM / ASR / TTS / MQTT broker）需要自行搭建，作品本身不含服务端。</li>
 </ol>
+<h3>6.1 交付镜像的验证程度</h3>
+<p><strong>上板验证过的</strong>：<strong>v2.67</strong>（交付的那一份，2026-09-19 逐条跑完）。脸谱界面——脸、
+字幕板、书签带、六个表情、全部道具、触摸、以及断网时「难过 + 中文安抚语」这条失败
+路径——连同这一版新增的<strong>字幕滚动</strong>（正文标签允许长到 8 行，前面开一个两行高的窗口，
+每 2.5 秒上行一行、到底回到开头）一起在真机上点亮并逐条跑过，同批的回归项
+（唤醒、追问窗口、提醒到点、故事模式分叉、MQTT 上报）也一起过了。再往前，v2.55
+上板复烧确认了白屏修复（<code>/dev/lcd0</code> 未注册，见第四节），截至 v2.53 的各功能版本
+（唤醒、ASR/LLM/TTS、提醒、RPG 会话隔离、MQTT 上报）都在真机上跑过，
+MQTT + 角色扮演回路是 2026-09-09 上板验证通过的。</p>
+<p><strong>还留着一个没大规模校准的地方</strong>：唤醒词的匹配写法只做过离线单测，没有对着真实 ASR
+输出成规模地校准过——喊不醒的时候，日志里 <code>wake: heard "..."</code> 会打出原始转写，照着
+往里加一条音译即可。</p>
+<p><strong>镜像的构造校验</strong>（结果是确定的，作为交叉验证）：版本号字符串在镜像里只出现一次且为
+<code>v2.67</code>；<code>date -s</code> 一次都不出现（时钟自愈已挪进应用，见第四节）；唤醒词
+「你好openvela / 欧本维拉」都在，且唤醒别名表里没有旧唤醒词；内建程序名 <code>kid_buddy</code>、
+以及脸谱开机日志格式串（<code>face UI %s on %dx%d</code>）都能在二进制里查到；<code>.sha256</code>
+与镜像一致。</p>
+<p>真要有问题，v2.60 ~ v2.66 七份历史镜像在我们本地留着（每份 27 MB，没有进仓），
+可以直接烧回去。</p>
 <hr />
 <h2>七、目录说明</h2>
-<pre><code>app/kid_buddy/          作品主体：1900+ 行 C + 5 个技能文件
+<pre><code>app/kid_buddy/          作品主体：4200+ 行 C + 5 份角色人设设计稿
 board/nsh_minidisplay/  板级配置（defconfig + Make.defs），自带即可编译
 image/                  预编译整机固件 + SHA256
 logs/                   AI Coding 对话日志（2026-07-25 ~ 09-12）
@@ -298,4 +541,5 @@ logs/                   AI Coding 对话日志（2026-07-25 ~ 09-12）
 docs/                   作品介绍、演示脚本、上游 PR 备忘
 contest2026_086_ditiekouyegoulianmeng.xml
                         manifest，把 app/kid_buddy 软链进编译树
-</code></pre></body></html>
+</code></pre>
+</body></html>

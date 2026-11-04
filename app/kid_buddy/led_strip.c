@@ -91,6 +91,14 @@
 #define STRIP_STEADY_PCT     40
 #define STRIP_IDLE_POLL_US   (100 * 1000)  /* 常亮时 10 Hz 看一眼活动位 */
 
+/* 每秒把 PG13 的复用和通道使能重新写一遍。PG13 原是 BT_PCM_DOUT，WiFi/BT
+ * 那套在开机、联网失败回退、射频开关的时候都会碰这一组脚；只要有一次把
+ * 复用改回去、或者把 PWM 通道的时钟门控关掉，灯带就再也不亮了，而我们的
+ * worker 还在照常算占空比——屏幕上看不出任何异常。与其去猜是谁改的，不如
+ * 自己定期抢回来。 */
+
+#define STRIP_REARM_US       (1000 * 1000)
+
 /****************************************************************************
  * Private Data
  ****************************************************************************/
@@ -117,6 +125,14 @@ static const uint16_t g_breath[STRIP_STEPS] =
 static volatile int g_strip_run;
 static pthread_t    g_strip_thread;
 static int          g_strip_started;
+
+/* 上一次写进去的占空比，重新接管通道时用它恢复亮度。 */
+
+static int          g_strip_pct = STRIP_STEADY_PCT;
+
+/* 复用/使能被别人改掉的次数，只在第一次和每 60 次打一行日志。 */
+
+static unsigned int g_strip_rearm_hits;
 
 /* 活动位由不同线程置/清（GUI 线程等模型，MQTT sync 线程发故事记录），
  * 所以用一个锁保护；worker 每 31 ms 读一次，开销可以忽略。 */
@@ -150,6 +166,8 @@ void led_strip_set_pct(int pct)
   reg &= 0xffff0000u;                       /* 清掉 [15:0] active cycles */
   reg |= active & 0xffffu;
   PWM_REG(LED_PWM_PPR(STRIP_PWM_CH)) = reg;
+
+  g_strip_pct = pct;
 }
 
 void led_strip_set_activity(unsigned int activity, int on)
@@ -179,14 +197,20 @@ static bool strip_activity_any(void)
   return any;
 }
 
-static void strip_pwm_init(void)
+static int strip_pwm_init(void)
 {
   uint32_t reg;
+  int      ret;
 
   /* 只借它打开 PWM 总线时钟。显示背光在 LCD 初始化时已经调用过一次，
-   * 这里是引用计数 +1，不会重置控制器。 */
+   * 这里是引用计数 +1，不会重置控制器。反过来，这一步失败（时钟还没
+   * 就绪）时后面所有权都没意义，必须让调用方知道。 */
 
-  hal_pwm_init();
+  ret = (int)hal_pwm_init();
+  if (ret != 0)
+    {
+      return ret;
+    }
 
   /* 通道 2：24 MHz 源、不分频。 */
 
@@ -210,17 +234,88 @@ static void strip_pwm_init(void)
   /* 使能通道 2。 */
 
   PWM_REG(LED_PWM_PER) |= (1u << STRIP_PWM_CH);
+
+  return 0;
+}
+
+/* 把 PG13 的复用和通道使能重新写一遍，顺便恢复当前亮度。 */
+
+static void strip_rearm_tick(void)
+{
+  uint32_t ppr;
+  bool     was_off;
+  int      ret;
+
+  was_off = (PWM_REG(LED_PWM_PER) & (1u << STRIP_PWM_CH)) == 0;
+
+  ret = hal_gpio_pinmux_set_function(STRIP_PIN, STRIP_PWM_MUX);
+
+  /* 控制器要是被复位过，周期寄存器会是 0，只补占空比没有意义。 */
+
+  ppr = PWM_REG(LED_PWM_PPR(STRIP_PWM_CH));
+  if ((ppr >> 16) == 0)
+    {
+      PWM_REG(LED_PWM_PPR(STRIP_PWM_CH)) =
+          ((STRIP_PERIOD_CYCLES - 1) << 16) | (ppr & 0xffffu);
+    }
+
+  PWM_REG(LED_PWM_PCGR) |= (1u << STRIP_PWM_CH);
+  PWM_REG(LED_PWM_PCR(STRIP_PWM_CH)) = PWM_PCR_ACTIVE_HIGH;
+  PWM_REG(LED_PWM_PER) |= (1u << STRIP_PWM_CH);
+
+  /* 写进去读不回来，说明总线时钟根本没开（hal_pwm_init 那步失败过），
+   * 补一次再写。pwm_init 只在成功时才加计数，失败重试是安全的。 */
+
+  if ((PWM_REG(LED_PWM_PER) & (1u << STRIP_PWM_CH)) == 0)
+    {
+      syslog(LOG_WARNING, "[led_strip] PWM 总线时钟没开，重新 hal_pwm_init\n");
+
+      if (hal_pwm_init() == 0)
+        {
+          PWM_REG(LED_PWM_PCGR) |= (1u << STRIP_PWM_CH);
+          PWM_REG(LED_PWM_PCR(STRIP_PWM_CH)) = PWM_PCR_ACTIVE_HIGH;
+          PWM_REG(LED_PWM_PPR(STRIP_PWM_CH)) =
+              ((STRIP_PERIOD_CYCLES - 1) << 16);
+          PWM_REG(LED_PWM_PER) |= (1u << STRIP_PWM_CH);
+
+          g_strip_rearm_hits++;
+        }
+    }
+
+  led_strip_set_pct(g_strip_pct);
+
+  if (was_off || ret != 0)
+    {
+      g_strip_rearm_hits++;
+
+      /* 每秒一次，日志别刷屏：第一次说一声，之后每分钟一次。 */
+
+      if (g_strip_rearm_hits == 1 || (g_strip_rearm_hits % 60) == 0)
+        {
+          syslog(LOG_WARNING,
+                 "[led_strip] PG13/PWM2 被别人动过（%s，mux ret=%d），"
+                 "已抢回（第 %u 次）\n",
+                 was_off ? "通道被关" : "复用被改", ret, g_strip_rearm_hits);
+        }
+    }
 }
 
 static void *strip_worker(void *arg)
 {
   unsigned int i = 0;
+  unsigned int rearm_acc = 0;
   bool breathing = false;
 
   (void)arg;
 
   while (g_strip_run)
     {
+      if (rearm_acc >= STRIP_REARM_US)
+        {
+          rearm_acc = 0;
+          strip_rearm_tick();
+        }
+
       if (strip_activity_any())
         {
           int pct;
@@ -239,6 +334,7 @@ static void *strip_worker(void *arg)
           breathing = true;
 
           usleep(STRIP_STEP_US);
+          rearm_acc += STRIP_STEP_US;
         }
       else
         {
@@ -251,6 +347,7 @@ static void *strip_worker(void *arg)
             }
 
           usleep(STRIP_IDLE_POLL_US);
+          rearm_acc += STRIP_IDLE_POLL_US;
         }
     }
 
@@ -271,11 +368,32 @@ int led_strip_start(void)
       return 0;
     }
 
-  ret = hal_gpio_pinmux_set_function(STRIP_PIN, STRIP_PWM_MUX);
+  /* kid_buddy 由 rcS 很早就拉起来，GPIO 驱动不一定已经就绪；复用失败
+   * 不等于这根脚不能当 PWM 用，给几次机会再放弃。 */
+
+  {
+    int tries;
+
+    for (tries = 0; tries < 5; tries++)
+      {
+        ret = hal_gpio_pinmux_set_function(STRIP_PIN, STRIP_PWM_MUX);
+        if (ret == 0)
+          {
+            break;
+          }
+
+        usleep(200 * 1000);
+      }
+  }
+
   if (ret != 0)
     {
-      syslog(LOG_ERR, "[led_strip] PG13 mux to PWM2 failed: %d\n", ret);
-      return -1;
+      /* 不复用失败就退出：worker 每秒会再试一次，开机早期 GPIO 还没
+       * 就绪、或者 WiFi 那头先把脚占了，都能在运行中补回来。 */
+
+      syslog(LOG_WARNING,
+             "[led_strip] PG13 mux to PWM2 failed: %d, worker 会继续重试\n",
+             ret);
     }
 
   /* 下拉：PWM 还没启动的这段时间（以及将来复位时）栅极必须是低电平，
@@ -284,7 +402,29 @@ int led_strip_start(void)
 
   hal_gpio_set_pull(STRIP_PIN, GPIO_PULL_DOWN);
 
-  strip_pwm_init();
+  /* PWM 总线时钟要等 CCU 起来，开机早期可能还没好；和上面的复用一样
+   * 给几次机会。全部失败也不退出——worker 起来以后还会自己补。 */
+
+  {
+    int tries;
+
+    for (tries = 0; tries < 5; tries++)
+      {
+        ret = strip_pwm_init();
+        if (ret == 0)
+          {
+            break;
+          }
+
+        usleep(200 * 1000);
+      }
+  }
+
+  if (ret != 0)
+    {
+      syslog(LOG_WARNING, "[led_strip] PWM clock not ready: %d, "
+             "worker 会继续重试\n", ret);
+    }
 
   /* 平时就是常亮；有活动位时 worker 会接管做呼吸。 */
   led_strip_set_pct(STRIP_STEADY_PCT);

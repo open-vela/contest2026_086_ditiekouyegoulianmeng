@@ -100,7 +100,7 @@
   .turn { font-size: 13px; line-height: 1.5; margin-bottom: 7px; white-space: pre-wrap; word-break: break-word; }
   .turn.kid { color: var(--text); }
   .turn.kid::before { content: "孩子："; color: var(--accent); font-weight: 600; }
-  .turn.teller { color: var(--muted); padding-left: 10px; border-left: 2px solid var(--line); }
+  .turn.teller { color: var(--muted); }
 
   /* 成长日报 */
   #dailyList { margin-top: 10px; max-height: 38vh; overflow-y: auto; }
@@ -152,13 +152,13 @@
     font-size: 17px; margin: 0 0 18px; color: #2c5f8a;
     border-bottom: 1px solid #e5e0d6; padding-bottom: 8px;
   }
-  .book-say { font-size: 16px; line-height: 2; margin: 0 0 16px; text-align: justify; }
-  .book-kid {
-    font-size: 15px; line-height: 1.9; margin: 0 0 16px; color: #1d4ed8;
-    border-left: 3px solid #93b4d8; padding-left: 12px;
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
-  }
-  .book-kid::before { content: "孩子　"; font-size: 12px; color: #7f9dc0; letter-spacing: .1em; }
+  /* 故事书按「一句话一行」排：正文和孩子的台词用同一套字体、同一个字号，
+   * 只靠颜色和前缀区分说话人。之前孩子的行换无衬线 + 左侧竖线，整本翻起来
+   * 像两份材料拼在一起。 */
+  .book-turn { margin: 0 0 18px; }
+  .book-say { font-size: 16px; line-height: 2; margin: 0; text-align: justify; }
+  .book-kid { font-size: 16px; line-height: 2; margin: 0 0 14px; color: #1d4ed8; }
+  .book-kid::before { content: "孩子："; color: #4b7bb5; font-weight: 600; }
 
   @media print {
     /* 打印时只留故事书，其余全藏掉 */
@@ -1087,8 +1087,14 @@
       html += '<div class="story-head">' + fmtWhen(g.start) +
               ' · ' + g.items.length + ' 条</div>';
       g.items.forEach(function(r){
-        html += '<div class="turn ' + (r.role === 'user' ? 'kid' : 'teller') + '">' +
-                escHtml(r.content) + '</div>';
+        if (r.role === 'user') {
+          html += '<div class="turn kid">' +
+                  escHtml(String(r.content).replace(/\s+/g, ' ').trim()) + '</div>';
+        } else {
+          splitStoryLines(r.content).forEach(function(line){
+            html += '<div class="turn teller">' + escHtml(line) + '</div>';
+          });
+        }
       });
     }
 
@@ -1229,13 +1235,43 @@
    * 这么做而不是自己生成 PDF/图片，是因为**零依赖**：不用引任何库，
    * 手机上也能直接导。
    *
-   * 版面上刻意做了区分：故事正文用宋体、字大行疏，孩子的每一句另外标出来
-   * （换无衬线字体 + 左侧竖线 + 蓝色）—— 家长翻这本的时候，
-   * 想看的其实是**孩子说了什么**，而不是故事本身。 */
+   * 版面上不再把孩子的台词单独拎出来：整本共用宋体，正文按「一句一行」排，
+   * 孩子那几行只是多一个「孩子：」前缀和一点蓝色。读起来是一段连续的故事，
+   * 而不是「故事」和「孩子的话」两份材料。 */
 
   var CHAPTER_NAMES = ['第一章','第二章','第三章','第四章','第五章',
                        '第六章','第七章','第八章','第九章','第十章',
                        '第十一章','第十二章','第十三章','第十四章','第十五章'];
+
+  /* 把一段回复切成「一句一行」。
+   * 模型的分段有时靠换行、有时只有标点，两种都认；句子末尾的引号、括号
+   * 跟着这一句走，不会孤零零掉到下一行。 */
+  function splitStoryLines(text){
+    var lines = [];
+    String(text || '').replace(/\r/g, '').split(/\n+/).forEach(function(part){
+      part = part.trim();
+      if (!part) return;
+      var buf = '', i = 0, quote = 0;
+      while (i < part.length) {
+        var ch = part.charAt(i);
+        buf += ch;
+        i++;
+        if ('「『“'.indexOf(ch) >= 0) quote++;
+        else if ('」』”'.indexOf(ch) >= 0 && quote > 0) quote--;
+        /* 引号里的问号/句号不断行，否则「真的吗？」和后面的「孩子问」会被拆开 */
+        if (quote === 0 && '。！？!?…'.indexOf(ch) >= 0) {
+          while (i < part.length && '。！？!?…」』”"）)'.indexOf(part.charAt(i)) >= 0) {
+            buf += part.charAt(i);
+            i++;
+          }
+          if (buf.trim()) lines.push(buf.trim());
+          buf = '';
+        }
+      }
+      if (buf.trim()) lines.push(buf.trim());
+    });
+    return lines;
+  }
 
   function openBook(){
     dbOpen(function(d){
@@ -1278,9 +1314,14 @@
               '　·　' + fmtDay(g.start) + '</h2>';
       g.items.forEach(function(r) {
         if (r.role === 'user') {
-          html += '<p class="book-kid">' + escHtml(r.content) + '</p>';
+          html += '<p class="book-kid">' +
+                  escHtml(String(r.content).replace(/\s+/g, ' ').trim()) + '</p>';
         } else {
-          html += '<p class="book-say">' + escHtml(r.content) + '</p>';
+          html += '<div class="book-turn">';
+          splitStoryLines(r.content).forEach(function(line) {
+            html += '<p class="book-say">' + escHtml(line) + '</p>';
+          });
+          html += '</div>';
         }
       });
       html += '</section>';

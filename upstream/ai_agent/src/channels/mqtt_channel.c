@@ -87,6 +87,74 @@ static volatile int      s_last_err = 0; /* 最近一次失败的错误码 */
 static volatile time_t   s_last_ok_sec = 0;  /* 最近一次成功发出的时刻 */
 static volatile bool     s_silent_warned = false; /* 「很久没发出去」只报一次 */
 
+/* ── 回执延后发送（v2.93） ────────────────────────────────────────
+ *
+ * MQTT-C 在 __mqtt_recv() 里是**拿着 client->mutex** 调 on_publish() 的，
+ * 而这把锁不是递归锁（mqtt_pal.h: pthread_mutex_init(mtx, NULL)）。所以
+ * 收消息的回调里只要再 publish 一次，就会自己等自己：sync 线程永久卡死，
+ * 之后收不到任何消息、也发不出任何东西，串口一条错误都不打。
+ *
+ * 睡觉时间 / 孩子名单 / 起名字 / 留言这四种回执原来都是这么发的。
+ * 2026-11-04 真机踩到：家长端点一次「设定」，板子的 MQTT 从此不动。
+ * 现在回调只把回执排进这个小队列，由 sync 线程在 mqtt_sync() 返回之后
+ * 发出去 —— 那时锁已经放开。 */
+
+#define MQTT_ACK_QUEUE  4
+#define MQTT_ACK_LEN    192
+
+static pthread_mutex_t s_ack_lock = PTHREAD_MUTEX_INITIALIZER;
+static char s_ack_to[MQTT_ACK_QUEUE][64];
+static char s_ack_text[MQTT_ACK_QUEUE][MQTT_ACK_LEN];
+static int  s_ack_head;
+static int  s_ack_tail;
+
+static void mqtt_ack_defer(const char *to, const char *text)
+{
+    int next;
+
+    if (to == NULL || to[0] == '\0' || text == NULL || text[0] == '\0') {
+        return;
+    }
+
+    pthread_mutex_lock(&s_ack_lock);
+
+    next = (s_ack_head + 1) % MQTT_ACK_QUEUE;
+    if (next == s_ack_tail) {
+        pthread_mutex_unlock(&s_ack_lock);
+        syslog(LOG_WARNING, "[%s] ack 队列满，丢掉一条回执\n", TAG);
+        return;
+    }
+
+    strncpy(s_ack_to[s_ack_head], to, sizeof(s_ack_to[0]) - 1);
+    s_ack_to[s_ack_head][sizeof(s_ack_to[0]) - 1] = '\0';
+    strncpy(s_ack_text[s_ack_head], text, sizeof(s_ack_text[0]) - 1);
+    s_ack_text[s_ack_head][sizeof(s_ack_text[0]) - 1] = '\0';
+    s_ack_head = next;
+
+    pthread_mutex_unlock(&s_ack_lock);
+}
+
+/* 只在 sync 线程里调，且必须在 mqtt_sync() 返回之后。 */
+static void mqtt_ack_pump(void)
+{
+    char to[64];
+    char text[MQTT_ACK_LEN];
+
+    for (;;) {
+        pthread_mutex_lock(&s_ack_lock);
+        if (s_ack_tail == s_ack_head) {
+            pthread_mutex_unlock(&s_ack_lock);
+            return;
+        }
+        strcpy(to, s_ack_to[s_ack_tail]);
+        strcpy(text, s_ack_text[s_ack_tail]);
+        s_ack_tail = (s_ack_tail + 1) % MQTT_ACK_QUEUE;
+        pthread_mutex_unlock(&s_ack_lock);
+
+        mqtt_channel_send(to, text);
+    }
+}
+
 /* ── 故事记录回传（决赛加） ──
  * 实现放在文件后半（要在 sync 线程旁边），但 on_publish 里就要用，
  * 所以先在这里声明。 */
@@ -537,7 +605,7 @@ static void mqtt_note_handle(const char *to, const char *from,
 
     if (cron_add_job(&job) != OK) {
         syslog(LOG_ERR, "[%s] note: 排任务失败（可能定时任务满了）\n", TAG);
-        mqtt_channel_send(to, "留言没排上（板子上的定时任务满了），过一会儿再试试。");
+        mqtt_ack_defer(to, "留言没排上（板子上的定时任务满了），过一会儿再试试。");
         return;
     }
 
@@ -556,7 +624,7 @@ static void mqtt_note_handle(const char *to, const char *from,
         snprintf(ack, sizeof(ack), "留言收到，马上就念给孩子。");
     }
 
-    mqtt_channel_send(to, ack);
+    mqtt_ack_defer(to, ack);
 }
 
 /* ── 家长端给板子起名字（决赛加） ──────────────────────────────────
@@ -610,7 +678,7 @@ static void mqtt_petname_handle(const char *to, const char *name)
         syslog(LOG_WARNING, "[%s] petname: 名字太长（%u 字节），拒绝\n",
                TAG, (unsigned)n);
         if (to != NULL && to[0] != '\0') {
-            mqtt_channel_send(to, "这个名字太长了，换短一点的吧。");
+            mqtt_ack_defer(to, "这个名字太长了，换短一点的吧。");
         }
         return;
     }
@@ -633,7 +701,7 @@ static void mqtt_petname_handle(const char *to, const char *name)
     if (to != NULL && to[0] != '\0') {
         char ack[96];
         snprintf(ack, sizeof(ack), "好，板子以后就叫「%s」了。", name);
-        mqtt_channel_send(to, ack);
+        mqtt_ack_defer(to, ack);
     }
 }
 
@@ -669,7 +737,7 @@ static void mqtt_kid_handle(const char *to, const char *list)
 
     if (to != NULL && to[0] != '\0') {
         snprintf(ack, sizeof(ack), "好，孩子名单已更新：%s（第一个是当前的）。", list);
-        mqtt_channel_send(to, ack);
+        mqtt_ack_defer(to, ack);
     }
 }
 
@@ -683,7 +751,7 @@ static void mqtt_sleep_handle(const char *to, int from_h, int to_h)
         syslog(LOG_WARNING, "[%s] sleep: 钟点不合法（%d %d）\n",
                TAG, from_h, to_h);
         if (to != NULL && to[0] != '\0') {
-            mqtt_channel_send(to, "钟点要在 0 到 23 之间。");
+            mqtt_ack_defer(to, "钟点要在 0 到 23 之间。");
         }
         return;
     }
@@ -705,7 +773,7 @@ static void mqtt_sleep_handle(const char *to, int from_h, int to_h)
             snprintf(ack, sizeof(ack), "好，板子 %02d:00 睡、%02d:00 醒。",
                      from_h, to_h);
         }
-        mqtt_channel_send(to, ack);
+        mqtt_ack_defer(to, ack);
     }
 }
 
@@ -1020,6 +1088,10 @@ static void *mqtt_sync_thread(void *arg)
             syslog(LOG_WARNING, "[%s] mqtt_sync error: %d\n", TAG, (int)err);
             /* MQTT-C will call reconnect_callback automatically */
         }
+
+        /* on_publish() 里排下的回执在这里发 —— 这时 mqtt_sync 已经放开
+         * client 锁，不会自己等自己（详见 mqtt_ack_defer 的注释）。 */
+        mqtt_ack_pump();
 
         /* ── 出站看门狗（决赛加） ────────────────────────────────
          *

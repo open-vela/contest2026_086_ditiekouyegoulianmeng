@@ -4,10 +4,10 @@
  * 外接单色呼吸灯带。
  *
  * 硬件（详见 docs/呼吸灯带接线.md）：
- *   H4 第 1 脚 (PG13, BT_PCM_DOUT) --100R--> MOS 管栅极，栅极再用 10k 下拉；
+ *   H4 第 3 脚 (PG13, BT_PCM_CLK) --100R--> MOS 管栅极，栅极再用 10k 下拉；
  *   MOS 管源极接 GND，漏极接灯带负极，灯带正极接 5V（H6 第 7 脚）或外部电源。
  *
- * 软件：PG13 复用成 PWM2（功能 6），2 kHz。平时常亮；有「活动」时
+ * 软件：PG13 复用成 PWM2（功能 5，实测值），2 kHz。平时常亮；有「活动」时
  * （等模型回复、给家长回传故事记录）按 4 秒周期做 gamma 校正的呼吸。
  *
  * 为什么不用 /dev/pwmN：NuttX 的 PWM lower-half 在每次 set-duty 时都会走
@@ -52,11 +52,18 @@
 
 /* PG13 的功能表（从原理图 SOC 页读出）：
  *   PG13/I2S1_BCLK/TWI0_SDA/RGMII_CLKIN/RMII_RXER/PWM2/LEDC_DO/UART1_RX
- * HAL 的 mux 编号是「GPIO 输入=0、输出=1、第一个复用=2」，所以 PWM2 是 6。
+ * 按「功能表里的位置 + 1」数，PWM2 应该是 6；照这个值去配，真机上 H4 第 3
+ * 脚一直是 0V，寄存器却全对。2026-11-04 用 v2.90 的慢扫实测：
+ *
+ *   - PG13 当普通输出拉高时，H4 第 3 脚两次都出 3.3V —— 脚位没错；
+ *   - 复用号 2~13 里，只有 mux=5 把 PWM2 送到脚上（闪 5 下）。
+ *
+ * 所以这张 SoC 上 PG13 的 PWM2 是 mux 5，功能表顺序和 mux 编号并不一一
+ * 对应（中间有一档没有引出）。不要再按数表子的办法改成 6。
  */
 
 #define STRIP_PIN            GPIOG(13)
-#define STRIP_PWM_MUX        GPIO_MUXSEL_FUNCTION6
+#define STRIP_PWM_MUX        GPIO_MUXSEL_FUNCTION5
 #define STRIP_PWM_CH         2
 
 /* sun8iw20 PWM 控制器：通道 2 的寄存器。 */
@@ -68,6 +75,7 @@
 #define LED_PWM_PER              0x80
 #define LED_PWM_PCR(n)           (0x0100 + 0x20 * (n))
 #define LED_PWM_PPR(n)           (0x0104 + 0x20 * (n))
+#define LED_PWM_PCNTR(n)         (0x0108 + 0x20 * (n))
 
 #define PWM_CLK_SRC_OSC24M   0              /* PCCR 的 clk_src = 0 */
 #define PWM_CLK_DIV_M_1      0              /* div_m = 0 → 分频 1 */
@@ -91,13 +99,21 @@
 #define STRIP_STEADY_PCT     40
 #define STRIP_IDLE_POLL_US   (100 * 1000)  /* 常亮时 10 Hz 看一眼活动位 */
 
-/* 每秒把 PG13 的复用和通道使能重新写一遍。PG13 原是 BT_PCM_DOUT，WiFi/BT
- * 那套在开机、联网失败回退、射频开关的时候都会碰这一组脚；只要有一次把
- * 复用改回去、或者把 PWM 通道的时钟门控关掉，灯带就再也不亮了，而我们的
- * worker 还在照常算占空比——屏幕上看不出任何异常。与其去猜是谁改的，不如
- * 自己定期抢回来。 */
+/* 每 100 ms 把 PG13 的复用和通道使能重新写一遍。PG13 原是 BT_PCM_DOUT，
+ * WiFi/BT 那套在开机、联网失败回退、射频开关的时候都会碰这一组脚；只要
+ * 有一次把复用改回去、或者把 PWM 通道的时钟门控关掉，灯带就再也不亮了，
+ * 而我们的 worker 还在照常算占空比——屏幕上看不出任何异常。
+ *
+ * v2.88 起不再只写不查：每次都把复用值读回来比对，被改成别的功能就记一行
+ * 日志再抢回。之前的版本只检查 PER 使能位和调用返回值，脚被别人改成
+ * GPIO/输入功能时这两样都正常，所以「被抢走」从来没能在日志里看见。 */
 
-#define STRIP_REARM_US       (1000 * 1000)
+#define STRIP_REARM_US       (100 * 1000)
+
+/* 开机头 10 秒强制全亮：量 H4-1 应该是稳定的 3.3V（不是 40% 的 1.3V），
+ * 灯带也是满亮。这一条是排查用的，确认完可以删掉。 */
+
+#define STRIP_BOOT_FULL_US   (10 * 1000 * 1000)
 
 /****************************************************************************
  * Private Data
@@ -122,6 +138,36 @@ static const uint16_t g_breath[STRIP_STEPS] =
      1,    0,    0,    0,    0,    0,    0,    0,
 };
 
+/* 找呼吸曲线里「下降段」上跟常亮亮度最接近的一档。开始呼吸时从这一档
+ * 往下走：第一下和常亮亮度一样，看不出跳变，然后一路暗下去，再自己
+ * 升上来。用 0 起步的话会先「啪」地暗一截，很生硬。 */
+
+static int strip_breath_start_index(void)
+{
+  int target = (STRIP_STEADY_PCT * 1000 + STRIP_MAX_PCT / 2) / STRIP_MAX_PCT;
+  int best   = STRIP_STEPS / 2;
+  int bestd  = 0x7fffffff;
+  int n;
+
+  for (n = STRIP_STEPS / 2; n < STRIP_STEPS; n++)
+    {
+      int d = (int)g_breath[n] - target;
+
+      if (d < 0)
+        {
+          d = -d;
+        }
+
+      if (d < bestd)
+        {
+          bestd = d;
+          best  = n;
+        }
+    }
+
+  return best;
+}
+
 static volatile int g_strip_run;
 static pthread_t    g_strip_thread;
 static int          g_strip_started;
@@ -133,6 +179,14 @@ static int          g_strip_pct = STRIP_STEADY_PCT;
 /* 复用/使能被别人改掉的次数，只在第一次和每 60 次打一行日志。 */
 
 static unsigned int g_strip_rearm_hits;
+
+/* 复用值被改成别的功能（不是 PWM2）的次数。 */
+
+static unsigned int g_strip_mux_hits;
+
+/* PG13 的 PWM2 复用号。原理图功能表数出来是 6，实测是 5（见上面的注释）。 */
+
+static int          g_strip_pwm_mux = STRIP_PWM_MUX;
 
 /* 活动位由不同线程置/清（GUI 线程等模型，MQTT sync 线程发故事记录），
  * 所以用一个锁保护；worker 每 31 ms 读一次，开销可以忽略。 */
@@ -238,17 +292,50 @@ static int strip_pwm_init(void)
   return 0;
 }
 
-/* 把 PG13 的复用和通道使能重新写一遍，顺便恢复当前亮度。 */
+/* 把复用值、时钟配置、通道使能重新写一遍，顺便恢复当前亮度。
+ *
+ * 复用值要读回来比对：脚被改成别的功能时，写 PER 和读 PER 都是正常的，
+ * 只有复用寄存器能看出问题。 */
 
 static void strip_rearm_tick(void)
 {
-  uint32_t ppr;
-  bool     was_off;
-  int      ret;
+  uint32_t      ppr;
+  uint32_t      pccr;
+  gpio_muxsel_t mux = GPIO_MUXSEL_DISABLED;
+  bool          was_off;
+  int           ret;
 
   was_off = (PWM_REG(LED_PWM_PER) & (1u << STRIP_PWM_CH)) == 0;
 
-  ret = hal_gpio_pinmux_set_function(STRIP_PIN, STRIP_PWM_MUX);
+  if (hal_gpio_pinmux_get_function(STRIP_PIN, &mux) != 0)
+    {
+      mux = GPIO_MUXSEL_DISABLED;
+    }
+
+  if (mux != (gpio_muxsel_t)g_strip_pwm_mux)
+    {
+      g_strip_mux_hits++;
+
+      if (g_strip_mux_hits == 1 || (g_strip_mux_hits % 60) == 0)
+        {
+          syslog(LOG_WARNING,
+                 "[led_strip] PG13 复用被改成 %d（不是 PWM2），抢回（第 %u 次）\n",
+                 (int)mux, g_strip_mux_hits);
+        }
+    }
+
+  ret = hal_gpio_pinmux_set_function(STRIP_PIN,
+                                     (gpio_muxsel_t)g_strip_pwm_mux);
+
+  /* 通道时钟配置也要补：别人要是重配了 PCCR23（改时钟源、改分频）或者
+   * 打开了 bypass，通道使能位还是 1，但脚上就没有我们那条 2 kHz 波形了。
+   * v2.87 之前只恢复使能位，这一路恢复不到。 */
+
+  pccr  = PWM_REG(LED_PWM_PCCR23);
+  pccr &= ~((0x3u << 7) | 0xfu);            /* clk_src = OSC24M, div_m = 0 */
+  PWM_REG(LED_PWM_PCCR23) = pccr;
+
+  PWM_REG(LED_PWM_PCGR) &= ~(1u << (STRIP_PWM_CH + 16));  /* 关掉 bypass */
 
   /* 控制器要是被复位过，周期寄存器会是 0，只补占空比没有意义。 */
 
@@ -304,27 +391,39 @@ static void *strip_worker(void *arg)
 {
   unsigned int i = 0;
   unsigned int rearm_acc = 0;
+  unsigned int boot_acc = 0;
+  unsigned int step_us;
   bool breathing = false;
 
   (void)arg;
 
   while (g_strip_run)
     {
-      if (rearm_acc >= STRIP_REARM_US)
+      if (boot_acc < STRIP_BOOT_FULL_US)
         {
-          rearm_acc = 0;
-          strip_rearm_tick();
-        }
+          /* 开机头 10 秒全亮：量 H4 第 3 脚应该是 3.3V，灯带一眼就能看出
+           * 来，不用去猜占空比对不对。 */
 
-      if (strip_activity_any())
+          boot_acc += STRIP_IDLE_POLL_US;
+          step_us   = STRIP_IDLE_POLL_US;
+
+          if (g_strip_pct != 100)
+            {
+              led_strip_set_pct(100);
+            }
+
+          breathing = false;
+        }
+      else if (strip_activity_any())
         {
           int pct;
 
-          /* 从最暗一档重新起呼，不要在上一轮的位置上接着走；活动断断续续
-           * 时也总是先暗后亮，看起来才像一次完整的呼吸。 */
+          /* 从常亮亮度那一档往下走，不要从 0 起：从 0 起会先突然暗一截，
+           * 再慢慢亮起来，看着像接触不良。曲线对称，从下降段接着往后走
+           * 就是「亮 → 暗 → 亮」一个完整的呼吸。 */
           if (!breathing)
             {
-              i = 0;
+              i = (unsigned int)strip_breath_start_index();
             }
 
           pct = ((int)g_breath[i] * STRIP_MAX_PCT + 500) / 1000;
@@ -333,21 +432,30 @@ static void *strip_worker(void *arg)
           i = (i + 1) & (STRIP_STEPS - 1);
           breathing = true;
 
-          usleep(STRIP_STEP_US);
-          rearm_acc += STRIP_STEP_US;
+          step_us = STRIP_STEP_US;
         }
       else
         {
           /* 活动全清：回到常亮。只在「刚停下」那一次写寄存器，之后每
-           * 100 ms 轮询一次即可，不占 PWM。 */
-          if (breathing)
+           * 100 ms 轮询一次即可，不占 PWM。开机全亮窗口刚结束时也要
+           * 落一次，否则灯带会一直停在 100%。 */
+
+          if (breathing || g_strip_pct != STRIP_STEADY_PCT)
             {
               led_strip_set_pct(STRIP_STEADY_PCT);
               breathing = false;
             }
 
-          usleep(STRIP_IDLE_POLL_US);
-          rearm_acc += STRIP_IDLE_POLL_US;
+          step_us = STRIP_IDLE_POLL_US;
+        }
+
+      usleep(step_us);
+
+      rearm_acc += step_us;
+      if (rearm_acc >= STRIP_REARM_US)
+        {
+          rearm_acc = 0;
+          strip_rearm_tick();
         }
     }
 
@@ -376,7 +484,8 @@ int led_strip_start(void)
 
     for (tries = 0; tries < 5; tries++)
       {
-        ret = hal_gpio_pinmux_set_function(STRIP_PIN, STRIP_PWM_MUX);
+        ret = hal_gpio_pinmux_set_function(STRIP_PIN,
+                                           (gpio_muxsel_t)g_strip_pwm_mux);
         if (ret == 0)
           {
             break;
@@ -426,9 +535,13 @@ int led_strip_start(void)
              "worker 会继续重试\n", ret);
     }
 
-  /* 平时就是常亮；有活动位时 worker 会接管做呼吸。 */
-  led_strip_set_pct(STRIP_STEADY_PCT);
+  hal_gpio_pinmux_set_function(STRIP_PIN, (gpio_muxsel_t)g_strip_pwm_mux);
+  hal_gpio_set_pull(STRIP_PIN, GPIO_PULL_DOWN);
 
+  /* 平时就是常亮；有活动位时 worker 会接管做呼吸。开机头 10 秒由 worker
+   * 强制全亮（STRIP_BOOT_FULL_US），所以这里先给 100%。 */
+
+  led_strip_set_pct(100);
   g_strip_run = 1;
 
   pthread_attr_init(&attr);
@@ -448,9 +561,10 @@ int led_strip_start(void)
 
   g_strip_started = 1;
   syslog(LOG_INFO,
-         "[led_strip] PG13/PWM2 %d Hz, steady %d%%, breathe on activity "
-         "(max %d%%)\n",
-         STRIP_PWM_HZ, STRIP_STEADY_PCT, STRIP_MAX_PCT);
+         "[led_strip] PG13/PWM2 %d Hz, mux %d, steady %d%%, breathe on "
+         "activity (max %d%%), full %d s at boot\n",
+         STRIP_PWM_HZ, g_strip_pwm_mux, STRIP_STEADY_PCT, STRIP_MAX_PCT,
+         (int)(STRIP_BOOT_FULL_US / 1000000));
   return 0;
 }
 

@@ -818,7 +818,7 @@ VAD，表现为板子自己把自己唤醒）；启动脚本改为拉起 kid_bud
 </tr>
 <tr>
 <td>固件</td>
-<td>本队交付镜像 <code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.70.img</code>（v2.70）</td>
+<td>本队交付镜像 <code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.93.img</code>（v2.93）</td>
 </tr>
 <tr>
 <td>系统</td>
@@ -840,9 +840,13 @@ VAD，表现为板子自己把自己唤醒）；启动脚本改为拉起 kid_bud
 </table>
 <h4>3.5.2 功能测试</h4>
 <p>下表是 <strong>v2.67</strong> 在真机上逐条跑过的结果（2026-09-19）。v2.67 是本作品<strong>最后一份完整上板
-验证过的固件</strong>；决赛版 <strong>v2.70</strong> 在它之上增加了四项工程改动（见 3.4.6，均以「不改动主链路」
-为设计约束）与一项新功能（孩子的冒险记录，见 3.2.3 第 7 项），增补部分的上板验证方法逐项
-列在仓内 <code>docs/上板验证清单.md</code>，随决赛演示一并复验。</p>
+验证过的固件</strong>；决赛版 <strong>v2.93</strong> 在它之上增加了二十余项改动（v2.68 ~ v2.93：多网络兜底、
+开机自检、MQTT 看门狗与内容安全、接近传感器、睡觉脸、长期记忆、多孩子档案、
+孩子的冒险记录、固定故事世界与情绪转介、主动分享与成长日报、回来玩邀请、
+外接呼吸灯带、故事模式多角色声线、公网 MQTT broker、星芽岛世界状态、家庭账号，
+以及 v2.93 的故事书与家长端回执修复），均以「不改动主链路」为设计约束。
+逐项说明见 <code>image/README.md</code>，上板验证方法列在仓内 <code>docs/上板验证清单.md</code>，
+随决赛演示一并复验。</p>
 <table>
 <thead>
 <tr>
@@ -1183,7 +1187,7 @@ VAD，表现为板子自己把自己唤醒）；启动脚本改为拉起 kid_bud
 <h3>3.7 总结与展望</h3>
 <h4>3.7.1 成果总结</h4>
 <ul>
-<li>一台可运行、可演示的儿童语音 AI 伙伴，交付预编译固件（v2.70）与完整源码。</li>
+<li>一台可运行、可演示的儿童语音 AI 伙伴，交付预编译固件（v2.93）与完整源码。</li>
 <li>四条基础要求全部落地：跑起来（编译 / 烧录 / 配 LLM / 三条交互渠道）、自定义 Skill
   （运行时 <code>story-rpg</code> + 开发期 4 个）、主动+执行场景（定时主动 + 上下文主动）、完整的
   应用场景说明。</li>
@@ -1193,8 +1197,8 @@ VAD，表现为板子自己把自己唤醒）；启动脚本改为拉起 kid_bud
   <code>packages_ai_agent</code> #33 / #34 / #35 / #36、<code>vendor_allwinnertech</code> #21。这 5 个 PR
   尚未合入，对应的文件成品随本仓 <code>upstream/</code> 交付并由 manifest 覆盖回工作区，因此
   <strong>源码路径不依赖上游合并</strong>，<code>repo sync</code> 之后即可直接构建。</li>
-<li>界面在 v2.64–v2.67 之间完成四次迭代，v2.67 已在真机上逐条验证通过；决赛版 v2.70
-  在此基础上补入四项现场可靠性改动（见 3.4.6）与孩子的冒险记录（见 3.2.3 第 7 项），
+<li>界面在 v2.64–v2.67 之间完成四次迭代，v2.67 已在真机上逐条验证通过；决赛版 v2.93
+  在此基础上补入二十余项现场可靠性改动与新功能（见 <code>image/README.md</code>），
   主链路未变。</li>
 </ul>
 <h4>3.7.2 应用前景与商业价值</h4>
@@ -1306,7 +1310,7 @@ ASR / TTS 接口，没有自建服务端）、<strong>内容可运营</strong>�
 </tr>
 <tr>
 <td>预编译固件</td>
-<td>仓内 <code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.70.img</code></td>
+<td>仓内 <code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.93.img</code></td>
 </tr>
 <tr>
 <td>AI Coding 日志</td>

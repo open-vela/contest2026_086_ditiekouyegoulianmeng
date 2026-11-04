@@ -59,7 +59,7 @@ a { color: #1a6fb5; text-decoration: none; }
 </tr>
 <tr>
 <td>应用版本</td>
-<td>v2.70</td>
+<td>v2.93</td>
 </tr>
 </tbody>
 </table>
@@ -122,6 +122,16 @@ a { color: #1a6fb5; text-decoration: none; }
 <td>讲背景 → 给 2~3 个选项 → 孩子语音选 → 剧情按选择走 → 再给选项，直到结局</td>
 </tr>
 <tr>
+<td>固定故事世界</td>
+<td>进入故事模式后自动</td>
+<td>故事发生在星芽岛：三个固定地点（灯塔湾 / 回声森林 / 星星集市）、三个固定居民（守灯人阿岚 / 小狐狸栗子 / 圆婆婆）、一套世界规则（无死亡流血、冲突靠解谜合作、分离总会重逢、每次冒险有收束）。地点和居民不会每轮重新生成</td>
+</tr>
+<tr>
+<td>情绪转介</td>
+<td>孩子说出严重情绪（被欺负 / 不想活 / 离家出走…）</td>
+<td>这一轮先安抚，并明确告诉孩子「我会告诉爸爸妈妈」；同时给家长推一条【重要提醒】。一般低落（难过 / 害怕 / 孤单…）推【心情提醒】。两级分开限流；剧情模式里的情绪词不算</td>
+</tr>
+<tr>
 <td>剧情与闲聊隔离</td>
 <td>自动</td>
 <td>故事模式和自由问答各存一份会话历史，中途问别的不会把剧情带跑偏</td>
@@ -135,6 +145,11 @@ a { color: #1a6fb5; text-decoration: none; }
 <td>主动续讲</td>
 <td>孩子走开后</td>
 <td>故事讲一半没人接，过一会儿 Agent 主动开口问「上次的冒险讲到一半啦，还要继续吗」</td>
+</tr>
+<tr>
+<td><strong>世界角色主动邀请</strong></td>
+<td>孩子在故事里玩过、然后离开 5 分钟</td>
+<td>星芽岛的居民轮流开口（守灯人阿岚 / 小狐狸栗子 / 圆婆婆），提一句上次冒险里的事，邀请他回来接着玩。两次至少隔 20 分钟、一天最多 3 次；睡前、时钟未校准、没网时不说话。孩子一接话就自动回到故事模式，剧情从断开的地方接着走</td>
 </tr>
 <tr>
 <td>追问窗口</td>
@@ -152,9 +167,14 @@ a { color: #1a6fb5; text-decoration: none; }
 <td>通过 MQTT 推一条回执到家长端网页，让家长知道交代的事传到了。只认短答句，孩子要是接着说「知道了，但我不想喝」，那句话会照常走正常问答</td>
 </tr>
 <tr>
-<td><strong>孩子的冒险记录</strong></td>
-<td>家长端点「同步」（连上后也会自动同步一次）</td>
-<td>把孩子角色扮演会话的文本记录取到手机上，按时间切成一段段冒险展示——孩子说的每句话标蓝「孩子：」，故事正文缩进灰字。<strong>长期档案存在手机本地</strong>（板子只留最近 20 条并滚动截断，每次同步往手机上合并去重），所以孩子玩过的故事不会因为板子刷新而消失</td>
+<td><strong>孩子分享的冒险</strong></td>
+<td>孩子在故事里说「把这次冒险放进故事书」/「分享给妈妈」</td>
+<td>板子把这次冒险从故事会话切进独立的分享档案，家长端只同步这一份。孩子没同意分享的剧情留在板子上，不会传过去。按时间切成一段段冒险展示——孩子说的每句话标蓝「孩子：」，故事正文缩进灰字。<strong>长期档案存在手机本地</strong>（板子只留最近 20 条并滚动截断，每次同步往手机上合并去重），所以孩子玩过的故事不会因为板子刷新而消失</td>
+</tr>
+<tr>
+<td><strong>成长日报</strong></td>
+<td>家长端自动汇总</td>
+<td>把分享记录和提醒回执按天汇总：冒险几场、说了几句、孩子说过什么、确认了哪些提醒。不调模型，每一句都能追溯到孩子自己的话</td>
 </tr>
 <tr>
 <td>全屏脸谱界面</td>
@@ -181,13 +201,13 @@ a { color: #1a6fb5; text-decoration: none; }
 <hr />
 <h2>二、怎么跑起来</h2>
 <h3>方式一：直接烧预编译固件（推荐）</h3>
-<pre><code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.70.img
+<pre><code>image/kid_buddy_gemini-s1_uart0_128Mnand_v2.93.img
 </code></pre>
 <p>用全志 PhoenixSuit / LiveSuit 按常规流程烧进 NAND。上电后启动脚本会自动拉起图形界面
 和语音后台，不需要再编任何东西。</p>
 <p>确认镜像生效：开机时串口（uart0，115200 8N1）会打出当前应用版本号和实际屏幕分辨率：</p>
-<pre><code>[kid_buddy] GUI v2.70 display 320x240
-[kid_buddy] face UI v2.70 on 320x240 (face band 162, panel 6,166 278x69, 33 cols)
+<pre><code>[kid_buddy] GUI v2.93 display 320x240
+[kid_buddy] face UI v2.93 on 320x240 (face band 162, panel 6,166 278x69, 33 cols)
 </code></pre>
 <p>屏幕本身不再显示版本号——右上角那个位置现在是书签带，整屏只有一张脸和底部三行字幕。</p>
 <h3>方式二：从源码编</h3>
@@ -533,10 +553,15 @@ make -C nuttx -j2</code></p>
 <li>服务端（LLM / ASR / TTS / MQTT broker）需要自行搭建，作品本身不含服务端。</li>
 </ol>
 <h3>6.1 交付镜像的验证程度</h3>
-<p><strong>上板验证过的</strong>：<strong>v2.67</strong>（2026-09-19 逐条跑完）。决赛版 <strong>v2.70</strong> 在它之上增加了四项
-现场可靠性改动——开机连多个候选网络（手机热点兜底）、开机自检写字幕板、MQTT 出站看门狗、
-输出侧内容安全过滤（详见技术报告 3.4.6）——以及一项新功能：<strong>孩子的冒险记录</strong>
-（家长端把孩子的角色扮演文本历史取到手机本地长期保存，见技术报告 3.2.3 第 7 项）。
+<p><strong>上板验证过的</strong>：<strong>v2.67</strong>（2026-09-19 逐条跑完）。决赛版 <strong>v2.93</strong> 在它之上增加了
+二十余项现场可靠性改动与新功能——多网络兜底、开机自检字幕、MQTT 出站看门狗、输出侧
+内容安全过滤、接近传感器「摸头」、睡觉脸、长期记忆、多孩子档案、MiMo 模型名迁移、
+云端配置写进镜像，v2.78 的四项：<strong>固定故事世界、情绪转介、孩子主动分享、成长日报</strong>
+（见技术报告 3.2.3 第 7 项），v2.79 的<strong>世界角色主动邀请</strong>，v2.80 ~ v2.92 的
+<strong>外接呼吸灯带</strong>（PWM2 / PG13，复用号实测为 5，思考与回传故事书时呼吸），
+v2.83 的<strong>故事模式多角色声线</strong>，v2.84 的<strong>公网 MQTT broker</strong>（家长端脱离局域网），
+v2.85 的<strong>星芽岛世界状态</strong>（开过的宝箱下次还记得），v2.78 起就有的<strong>家庭账号与企业端</strong>，
+以及 v2.93 的两处修复：<strong>故事书补回孩子自己说的话</strong>、<strong>家长端设定按钮不再卡死 MQTT</strong>。
 这些改动都以「不改动主链路」为设计约束，各自的验证方法逐项列在仓内
 <code>docs/上板验证清单.md</code>，随决赛演示一并复验。</p>
 <p>v2.67 当时跑过的：脸谱界面——脸、
@@ -550,17 +575,19 @@ MQTT + 角色扮演回路是 2026-09-09 上板验证通过的。</p>
 <p><strong>还留着一个没大规模校准的地方</strong>：唤醒词的匹配写法只做过离线单测，没有对着真实 ASR
 输出成规模地校准过——喊不醒的时候，日志里 <code>wake: heard "..."</code> 会打出原始转写，照着
 往里加一条音译即可。</p>
-<p><strong>镜像的构造校验</strong>（在 <strong>v2.70</strong> 交付镜像上实测，结果是确定的，作为交叉验证）：
-版本号字符串在镜像里<strong>只出现一次</strong>且为 <code>v2.70</code>（<code>v2.67</code> / <code>v2.68</code> / <code>v2.69</code> 均为 0 次）；
+<p><strong>镜像的构造校验</strong>（在 <strong>v2.93</strong> 交付镜像上实测，结果是确定的，作为交叉验证）：
+版本号字符串在镜像里<strong>只出现一次</strong>且为 <code>v2.93</code>（旧号 <code>v2.92</code> 为 0 次）；
 <code>date -s</code> 一次都不出现（时钟自愈已挪进应用，见第四节）；唤醒词
 「你好openvela / 欧本维拉」都在，且唤醒别名表里没有旧唤醒词；内建程序名 <code>kid_buddy</code>、
 两条开机日志格式串（<code>GUI %s display %dx%d</code> 与 <code>face UI %s on %dx%d</code>）、
-决赛版新加的自检格式串（<code>selfcheck: net=%d clock=%d</code>）、WiFi 候选目录名
-（<code>networks.d</code>）、MQTT 看门狗标记（<code>WATCHDOG</code>）、以及冒险记录的协议标记
-（<code>story_log</code>）都能在二进制里查到；<code>.sha256</code> 与镜像一致。</p>
-<p>真要有问题，v2.60 ~ v2.69 十份历史镜像在我们本地留着（每份 27 MB，没有进仓），
-可以直接烧回去。其中 <code>v2.68</code>（只含前两项改动）是内容安全过滤的<strong>回退点</strong>——
-万一过滤出现误杀，烧回它即可去掉这一层。</p>
+自检格式串（<code>selfcheck: net=%d clock=%d</code>）、WiFi 候选目录名
+（<code>networks.d</code>）、MQTT 看门狗标记（<code>WATCHDOG</code>）、冒险记录的协议标记
+（<code>story_log</code>）、世界状态工具名（<code>remember_world</code>）、灯带日志（<code>steady %d%%</code>）、
+以及 v2.93 新加的 <code>ack 队列满</code> 与故事书改写用的
+<code>{"role":"user","content":"</code> / <code>%.*s","ts":%s</code> 都能在二进制里查到；
+<code>.sha256</code> 与镜像一致。</p>
+<p>真要有问题，v2.60 ~ v2.92 的历史镜像在我们本地留着（每份 27 MB，没有进仓），
+可以直接烧回去。最稳的退路是<strong>已完整上板验证过的 v2.67</strong>。</p>
 <hr />
 <h2>七、目录说明</h2>
 <pre><code>app/kid_buddy/          作品主体：4500+ 行 C + 5 份角色人设设计稿
